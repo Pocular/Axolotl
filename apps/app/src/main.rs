@@ -20,6 +20,8 @@ use tauri_plugin_fs::FsExt;
 use theseus::prelude::*;
 
 mod api;
+#[cfg(target_os = "windows")]
+mod d3d9_compat;
 mod error;
 mod lightweight_mode;
 mod mod_translation;
@@ -720,6 +722,14 @@ fn main() {
         })
         .setup(|app| {
             lightweight_mode::init(&app.handle());
+            #[cfg(target_os = "windows")]
+            if let Some(window) = app.get_window("main") {
+                d3d9_compat::initialize(&window);
+            } else {
+                tracing::warn!(
+                    "Could not initialize D3D9 compatibility: main window not found"
+                );
+            }
             let app_handle = app.handle().clone();
             tauri::async_runtime::spawn(async move {
                 tokio::time::sleep(std::time::Duration::from_secs(4)).await;

@@ -72,7 +72,14 @@ tauri-plugin-updater = { workspace = true, optional = true }
 
 [target."cfg(windows)".dependencies.windows]
 workspace = true
-features = ["Win32_Graphics_Dwm", "Win32_System_Com", "Win32_UI_Shell"]
+features = [
+  "Win32_Foundation",
+  "Win32_Graphics_Direct3D9",
+  "Win32_Graphics_Dwm",
+  "Win32_System_Com",
+  "Win32_System_LibraryLoader",
+  "Win32_UI_Shell",
+]
 
 [features]
 # by default Tauri runs in production mode
