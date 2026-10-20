@@ -11,6 +11,48 @@
   "app.action-bar.downloads": {
     "message": "下載"
   },
+  "app.action-bar.downloads.cancel": {
+    "message": "取消下載"
+  },
+  "app.action-bar.downloads.empty": {
+    "message": "沒有進行中的下載"
+  },
+  "app.action-bar.downloads.legacy": {
+    "message": "正在下載。"
+  },
+  "app.action-bar.downloads.phase.downloading-content": {
+    "message": "正在下載內容"
+  },
+  "app.action-bar.downloads.phase.downloading-minecraft": {
+    "message": "正在下載 Minecraft"
+  },
+  "app.action-bar.downloads.phase.downloading-pack": {
+    "message": "正在下載整合包"
+  },
+  "app.action-bar.downloads.phase.finalizing": {
+    "message": "正在完成"
+  },
+  "app.action-bar.downloads.phase.preparing-instance": {
+    "message": "正在準備實例"
+  },
+  "app.action-bar.downloads.phase.preparing-java": {
+    "message": "正在準備 Java"
+  },
+  "app.action-bar.downloads.phase.resolving-pack": {
+    "message": "正在解析整合包"
+  },
+  "app.action-bar.downloads.phase.unknown": {
+    "message": "處理中"
+  },
+  "app.action-bar.downloads.phase.verifying": {
+    "message": "正在驗證"
+  },
+  "app.action-bar.downloads.view-details": {
+    "message": "檢視詳情"
+  },
+  "app.action-bar.downloads.view-history": {
+    "message": "檢視下載記錄"
+  },
   "app.action-bar.exporting-modpack": {
     "message": "正在匯出整合包"
   },
@@ -380,6 +422,15 @@
   "app.appearance-settings.accent-color.purple": {
     "message": "紫色"
   },
+  "app.appearance-settings.accent-color.system": {
+    "message": "跟隨系統"
+  },
+  "app.appearance-settings.accent-color.system-unsupported": {
+    "message": "系統不支援"
+  },
+  "app.appearance-settings.accent-color.system-unsupported-label": {
+    "message": "跟隨系統：系統不支援"
+  },
   "app.appearance-settings.accent-color.title": {
     "message": "強調色"
   },
@@ -389,17 +440,26 @@
   "app.appearance-settings.advanced-rendering.title": {
     "message": "進階繪製"
   },
-  "app.appearance-settings.auto-hide-downloads-button.description": {
-    "message": "沒有進行中的下載任務時隱藏側邊欄中的下載按鈕，有任務時自動顯示。"
-  },
-  "app.appearance-settings.auto-hide-downloads-button.title": {
-    "message": "自動隱藏下載按鈕"
-  },
   "app.appearance-settings.auto-install-dependencies.description": {
     "message": "安裝內容時自動下載所需前置。每次安裝前仍可在確認對話方塊中調整選擇。"
   },
   "app.appearance-settings.auto-install-dependencies.title": {
     "message": "自動安裝前置"
+  },
+  "app.appearance-settings.close-behavior.ask": {
+    "message": "每次詢問"
+  },
+  "app.appearance-settings.close-behavior.close": {
+    "message": "直接結束"
+  },
+  "app.appearance-settings.close-behavior.description": {
+    "message": "選擇關閉視窗時要結束啟動器，還是將其隱藏至系統匣。"
+  },
+  "app.appearance-settings.close-behavior.lightweight": {
+    "message": "隱藏至系統匣"
+  },
+  "app.appearance-settings.close-behavior.title": {
+    "message": "選擇關閉 Axolotl Launcher 的方式"
   },
   "app.appearance-settings.color-theme.description": {
     "message": "請選擇你偏好的 Axolotl Launcher 色彩主題。"
@@ -716,23 +776,17 @@
   "app.browse.source.planet-minecraft": {
     "message": "Planet Minecraft 來源"
   },
-  "app.community-announcement.feedback-middle": {
-    "message": "，或於 "
+  "app.close-launcher.direct": {
+    "message": "直接結束"
   },
-  "app.community-announcement.feedback-prefix": {
-    "message": "如果您有更多、更好的想法或建議，歡迎加入我們的 QQ 群組："
+  "app.close-launcher.remember": {
+    "message": "記住我的選擇"
   },
-  "app.community-announcement.feedback-suffix": {
-    "message": " 上向我們提出。期待與大家共同完善 Axolotl Launcher！"
+  "app.close-launcher.title": {
+    "message": "選擇關閉 Axolotl Launcher 的方式"
   },
-  "app.community-announcement.response": {
-    "message": "自從 Axolotl Launcher 在影片平台宣傳以來，我們收穫了遠超預期的喜愛與關注，同時也收到了許多高品質的回饋與提議。"
-  },
-  "app.community-announcement.thanks": {
-    "message": "對於影片評論區裡的留言，我都已盡可能地逐一回覆。承蒙各位厚愛，在此表達最誠摯的感謝！"
-  },
-  "app.community-announcement.title": {
-    "message": "致各位使用者"
+  "app.close-launcher.tray": {
+    "message": "隱藏至系統匣"
   },
   "app.content-favorites.add": {
     "message": "新增到收藏夾"
@@ -962,9 +1016,6 @@
   "app.crash-analysis.ai.error": {
     "message": "AI 解釋失敗：{message}"
   },
-  "app.crash-analysis.ai.settings.description": {
-    "message": "可選：將經過脫敏和裁剪的崩潰內容傳送給 AI Providers 中設定的模型。"
-  },
   "app.crash-analysis.ai.settings.enabled": {
     "message": "啟用 AI 解釋"
   },
@@ -979,9 +1030,6 @@
   },
   "app.crash-analysis.ai.settings.provider": {
     "message": "AI Provider"
-  },
-  "app.crash-analysis.ai.settings.title": {
-    "message": "崩潰 AI 解釋"
   },
   "app.crash-analysis.ai.title": {
     "message": "AI 崩潰解釋"
@@ -1324,6 +1372,15 @@
   },
   "app.downloads.open-instance": {
     "message": "開啟實例"
+  },
+  "app.downloads.operation.content-change": {
+    "message": "內容更新"
+  },
+  "app.downloads.operation.content-switch-version": {
+    "message": "切換內容版本"
+  },
+  "app.downloads.operation.content-update-all": {
+    "message": "更新所有內容"
   },
   "app.downloads.operation.upgrade": {
     "message": "升級"
@@ -2777,51 +2834,6 @@
   "app.instance.post-upgrade-status": {
     "message": "已升級至 {version}"
   },
-  "app.instance.screenshots.action-failed": {
-    "message": "螢幕截圖操作失敗"
-  },
-  "app.instance.screenshots.copied": {
-    "message": "已複製螢幕截圖"
-  },
-  "app.instance.screenshots.copy": {
-    "message": "複製螢幕截圖"
-  },
-  "app.instance.screenshots.copy-failed": {
-    "message": "無法複製螢幕截圖"
-  },
-  "app.instance.screenshots.delete": {
-    "message": "刪除螢幕截圖"
-  },
-  "app.instance.screenshots.delete-description": {
-    "message": "確定要永久刪除 {name} 嗎？"
-  },
-  "app.instance.screenshots.delete-failed": {
-    "message": "無法刪除螢幕截圖"
-  },
-  "app.instance.screenshots.empty-description": {
-    "message": "在 Minecraft 中拍攝的螢幕截圖會自動顯示在這裡。"
-  },
-  "app.instance.screenshots.empty-title": {
-    "message": "目前沒有螢幕截圖"
-  },
-  "app.instance.screenshots.loading-failed": {
-    "message": "無法載入螢幕截圖"
-  },
-  "app.instance.screenshots.no-search-results": {
-    "message": "找不到符合搜尋條件的螢幕截圖。"
-  },
-  "app.instance.screenshots.open-folder": {
-    "message": "開啟螢幕截圖資料夾"
-  },
-  "app.instance.screenshots.save-as": {
-    "message": "另存新檔..."
-  },
-  "app.instance.screenshots.search-placeholder": {
-    "message": "搜尋 {count} 張螢幕截圖..."
-  },
-  "app.instance.screenshots.view": {
-    "message": "查看螢幕截圖"
-  },
   "app.instance.screenshots.zoom-in": {
     "message": "查看原始大小"
   },
@@ -2927,20 +2939,8 @@
   "app.instances.add-content": {
     "message": "新增內容"
   },
-  "app.instances.batch-edit-groups.apply": {
-    "message": "套用"
-  },
-  "app.instances.batch-edit-groups.create-group": {
-    "message": "建立新分組"
-  },
-  "app.instances.batch-edit-groups.description": {
-    "message": "為 {count} 個實例設定分組"
-  },
-  "app.instances.batch-edit-groups.enter-group-name": {
-    "message": "分組名稱"
-  },
   "app.instances.batch-edit-groups.header": {
-    "message": "編輯分組"
+    "message": "建立分組"
   },
   "app.instances.copy-path": {
     "message": "複製路徑"
@@ -2955,7 +2955,7 @@
     "message": "編輯分組"
   },
   "app.instances.group-by": {
-    "message": "分組方式："
+    "message": "分組方式"
   },
   "app.instances.group.game-version": {
     "message": "遊戲版本"
@@ -2971,6 +2971,96 @@
   },
   "app.instances.group.ungrouped": {
     "message": "無分組"
+  },
+  "app.instances.group.pinned": {
+    "message": "已置頂"
+  },
+  "app.instances.group.empty": {
+    "message": "拖放實例到此處添加。"
+  },
+  "app.instances.group.edit-name": {
+    "message": "編輯分組名稱"
+  },
+  "app.instances.group.delete-group": {
+    "message": "刪除分組"
+  },
+  "app.instances.group.delete-description": {
+    "message": "此分組中的實例將被取消分組。"
+  },
+  "app.instances.group.move-up": {
+    "message": "上移分組"
+  },
+  "app.instances.group.move-down": {
+    "message": "下移分組"
+  },
+  "app.instances.group.add-to-group": {
+    "message": "新增到分組"
+  },
+  "app.instances.group.new-instance": {
+    "message": "新建實例"
+  },
+  "app.instances.group.collapse": {
+    "message": "折疊分組"
+  },
+  "app.instances.group.expand": {
+    "message": "展開分組"
+  },
+  "app.instances.group.rename-group": {
+    "message": "重新命名分組"
+  },
+  "app.instances.group.name-empty": {
+    "message": "分組名稱不能為空。"
+  },
+  "app.instances.group.name-too-long": {
+    "message": "分組名稱不能超過 {maxLength} 個字元。"
+  },
+  "app.instances.batch-edit-groups.add-to-group-title": {
+    "message": "新增實例到「{groupName}」"
+  },
+  "app.instances.batch-edit-groups.group-name": {
+    "message": "分組名稱"
+  },
+  "app.instances.batch-edit-groups.group-name-placeholder": {
+    "message": "輸入分組名稱"
+  },
+  "app.instances.batch-edit-groups.search-instance": {
+    "message": "搜尋實例"
+  },
+  "app.instances.batch-edit-groups.no-instances-found": {
+    "message": "未找到實例"
+  },
+  "app.instances.batch-edit-groups.add": {
+    "message": "新增"
+  },
+  "app.instances.batch-edit-groups.added": {
+    "message": "已新增"
+  },
+  "app.instances.batch-edit-groups.cancel": {
+    "message": "取消"
+  },
+  "app.instances.batch-edit-groups.create": {
+    "message": "建立分組"
+  },
+  "app.instances.batch-edit-groups.save-changes": {
+    "message": "儲存"
+  },
+  "app.library.group.new": {
+    "message": "新建分組"
+  },
+  "app.library.selection.new-group": {
+    "message": "新建分組"
+  },
+  "app.library.selection.remove-from-group": {
+    "message": "移出分組"
+  },
+  "app.library.context-menu.pin-instance": {
+    "message": "置頂實例"
+  },
+  "app.library.context-menu.unpin-instance": {
+    "message": "取消置頂"
+  },
+  "app.library.context-menu.remove-from-group": {
+    "message": "移出分組"
   },
   "app.instances.pin-to-home": {
     "message": "固定到首頁"
@@ -2998,6 +3088,33 @@
   },
   "app.instances.sort.name": {
     "message": "名稱"
+  },
+  "app.instances.sort-by": {
+    "message": "排序方式"
+  },
+  "app.instances.sort.direction.asc-alphabetical": {
+    "message": "A–Z 正序"
+  },
+  "app.instances.sort.direction.desc-alphabetical": {
+    "message": "Z–A 倒序"
+  },
+  "app.instances.sort.direction.asc-version": {
+    "message": "舊版本在前"
+  },
+  "app.instances.sort.direction.desc-version": {
+    "message": "新版本在前"
+  },
+  "app.instances.sort.direction.asc-recency": {
+    "message": "最早遊玩在前"
+  },
+  "app.instances.sort.direction.desc-recency": {
+    "message": "最近遊玩在前"
+  },
+  "app.instances.sort.direction.asc-date": {
+    "message": "最早的在前"
+  },
+  "app.instances.sort.direction.desc-date": {
+    "message": "最新的在前"
   },
   "app.instances.unpin-from-home": {
     "message": "取消固定"
@@ -4361,11 +4478,14 @@
   "app.lab.seed-map.edition.java-large-biomes": {
     "message": "Java 版：大型生物群系"
   },
-  "app.lab.seed-map.elevation": {
-    "message": "群系高度"
+  "app.lab.seed-map.elevation.deep-underground": {
+    "message": "深層地下"
   },
-  "app.lab.seed-map.elevation-locked": {
-    "message": "開啟地形估算時自動採用估算的地表高度"
+  "app.lab.seed-map.elevation.shallow-underground": {
+    "message": "淺層地下"
+  },
+  "app.lab.seed-map.elevation.surface": {
+    "message": "地表"
   },
   "app.lab.seed-map.exit-fullscreen": {
     "message": "退出全螢幕"
@@ -4979,42 +5099,6 @@
   "app.minecraft.playing-as": {
     "message": "當前遊玩帳號："
   },
-  "app.modal.install-to-play.content-required": {
-    "message": "所需內容"
-  },
-  "app.modal.install-to-play.header": {
-    "message": "安裝以遊玩"
-  },
-  "app.modal.install-to-play.install-button": {
-    "message": "安裝"
-  },
-  "app.modal.install-to-play.mod-count": {
-    "message": "{count, plural, other {# 個模組}}"
-  },
-  "app.modal.install-to-play.required-modpack": {
-    "message": "所需模組包"
-  },
-  "app.modal.install-to-play.server-requires-mods": {
-    "message": "這個伺服器需要模組才能遊玩。請點選「安裝」以從 Modrinth 設定所需的檔案，完成後即可直接加入伺服器。"
-  },
-  "app.modal.install-to-play.shared-instance": {
-    "message": "共用實例"
-  },
-  "app.modal.install-to-play.shared-server-instance": {
-    "message": "共用伺服器實例"
-  },
-  "app.modal.install-to-play.view-contents": {
-    "message": "檢視內容"
-  },
-  "app.modal.update-to-play.header": {
-    "message": "更新以遊玩"
-  },
-  "app.modal.update-to-play.update-required": {
-    "message": "需要更新"
-  },
-  "app.modal.update-to-play.update-required-description": {
-    "message": "需要更新才能遊玩「{name}」。請更新至最新版本以啟動遊戲。"
-  },
   "app.modpack.change-version": {
     "message": "變更模組包版本"
   },
@@ -5073,13 +5157,13 @@
     "message": "訪客"
   },
   "app.multiplayer.hongshi.binary-missing": {
-    "message": "建立房間前，請先下載適用於當前裝置的紅石聯機核心。"
+    "message": "首次建立房間時將自動安裝紅石聯機 2 核心。"
   },
   "app.multiplayer.hongshi.cached": {
     "message": "（快取）"
   },
   "app.multiplayer.hongshi.closed": {
-    "message": "紅石房間已關閉。重新建立後會獲得新的聯機地址。"
+    "message": "紅石聯機 2 房間已關閉。重新建立後會獲得新的聯機地址。"
   },
   "app.multiplayer.hongshi.create": {
     "message": "建立公網房間"
@@ -5090,11 +5174,38 @@
   "app.multiplayer.hongshi.detected-port": {
     "message": "{instance} — 埠 {port}"
   },
-  "app.multiplayer.hongshi.download": {
-    "message": "下載紅石聯機"
+  "app.multiplayer.hongshi.cancel": {
+    "message": "取消"
   },
-  "app.multiplayer.hongshi.limits": {
-    "message": "隧道無玩家 10 分鐘或執行滿 6 小時後自動關閉；最多 10 名玩家，共享 10Mbps 頻寬。"
+  "app.multiplayer.hongshi.no-nodes": {
+    "message": "目前沒有已發布的中轉節點，請重新整理列表後重試。"
+  },
+  "app.multiplayer.hongshi.error.build-unavailable": {
+    "message": "適用於當前裝置的紅石聯機 2 核心暫未發布，請稍後重試。"
+  },
+  "app.multiplayer.hongshi.error.node-list": {
+    "message": "無法取得中轉節點，請檢查網路並重新整理列表。"
+  },
+  "app.multiplayer.hongshi.error.node-unavailable": {
+    "message": "中轉節點未能建立房間，請重新整理節點列表或選擇其他節點。"
+  },
+  "app.multiplayer.hongshi.error.invalid-port": {
+    "message": "請輸入 1 到 65535 之間的本地埠。"
+  },
+  "app.multiplayer.hongshi.error.install": {
+    "message": "無法安裝紅石聯機 2 核心，請檢查網路後重試。"
+  },
+  "app.multiplayer.hongshi.error.kernel-start": {
+    "message": "紅石聯機 2 核心未能建立房間，請重試或開啟日誌。"
+  },
+  "app.multiplayer.hongshi.error.kernel-exit": {
+    "message": "紅石聯機 2 核心意外退出，請重新建立房間或開啟日誌。"
+  },
+  "app.multiplayer.hongshi.error.kernel-output": {
+    "message": "紅石聯機 2 核心回傳了無效地址或輸出，請開啟日誌查看詳情。"
+  },
+  "app.multiplayer.hongshi.error.unknown": {
+    "message": "無法建立紅石聯機 2 房間，請重試或開啟日誌。"
   },
   "app.multiplayer.hongshi.local-port": {
     "message": "本地 Minecraft 埠"
@@ -5112,7 +5223,7 @@
     "message": "{name} — {latency} 毫秒{cached}"
   },
   "app.multiplayer.hongshi.open-logs": {
-    "message": "開啟紅石日誌"
+    "message": "開啟紅石聯機 2 日誌"
   },
   "app.multiplayer.hongshi.port-changed": {
     "message": "Minecraft 已開放新的區域網埠，請重啟隧道後再分享地址。"
@@ -5124,7 +5235,7 @@
     "message": "公網地址"
   },
   "app.multiplayer.hongshi.public-address-hint": {
-    "message": "好友可直接在 Minecraft 中輸入此地址，無需執行紅石核心。"
+    "message": "好友可直接在 Minecraft 中輸入此地址，無需執行紅石聯機 2 核心。"
   },
   "app.multiplayer.hongshi.refresh-nodes": {
     "message": "重新整理節點"
@@ -5139,7 +5250,7 @@
     "message": "不可用"
   },
   "app.multiplayer.hongshi.unsupported": {
-    "message": "紅石聯機暫不支援當前作業系統或處理器架構。"
+    "message": "紅石聯機 2 暫不支援當前作業系統或處理器架構。"
   },
   "app.multiplayer.host": {
     "message": "創建房間"
@@ -5193,7 +5304,7 @@
     "message": "由 Terracotta | 陶瓦聯機 強力驅動"
   },
   "app.multiplayer.provider.hongshi": {
-    "message": "紅石聯機"
+    "message": "紅石聯機 2"
   },
   "app.multiplayer.provider.terracotta": {
     "message": "陶瓦聯機"
@@ -5654,9 +5765,6 @@
   "app.privacy-consent.title": {
     "message": "隱私與安全"
   },
-  "app.project.curseforge.loading": {
-    "message": "正在載入 CurseForge 專案..."
-  },
   "app.project.curseforge.unavailable-description": {
     "message": "這個 CurseForge 專案未傳回任何資料。"
   },
@@ -5839,9 +5947,6 @@
   },
   "app.servers.card.type": {
     "message": "{type} · {version}"
-  },
-  "app.servers.console.command-echo": {
-    "message": "> {command}"
   },
   "app.servers.console.not-running": {
     "message": "伺服器未執行"
@@ -6449,12 +6554,6 @@
   "app.settings.about.repository": {
     "message": "原始碼"
   },
-  "app.settings.about.survey": {
-    "message": "調查問卷"
-  },
-  "app.settings.about.survey-description": {
-    "message": "幫助我們改進 Axolotl Launcher"
-  },
   "app.settings.about.test-error": {
     "message": "觸發測試錯誤"
   },
@@ -6490,6 +6589,15 @@
   },
   "app.settings.defaults.fullscreen-description": {
     "message": "啟動時覆寫 options.txt 檔案，使遊戲以全螢幕模式執行。"
+  },
+  "app.settings.defaults.maximize-window": {
+    "message": "最大化視窗"
+  },
+  "app.settings.defaults.maximize-window-description": {
+    "message": "啟動時最大化 Minecraft 視窗。"
+  },
+  "app.settings.defaults.maximize-window.unsupported": {
+    "message": "目前的作業系統暫不支援。"
   },
   "app.settings.defaults.height": {
     "message": "高度"
@@ -6686,11 +6794,38 @@
   "app.settings.resources.app-directory": {
     "message": "應用程式目錄"
   },
+  "app.settings.resources.axolotl-data-directory": {
+    "message": "Axolotl 資料目錄"
+  },
   "app.settings.resources.app-directory-description": {
     "message": "啟動器用於儲存全部遊戲檔案的目錄。變更後將在重新啟動啟動器後生效。"
   },
   "app.settings.resources.app-directory-description-portable": {
     "message": "正在以便攜模式運行，所有數據已固定在程序目錄下，無法修改。"
+  },
+  "app.settings.resources.minecraft-directories": {
+    "message": "Minecraft 目錄"
+  },
+  "app.settings.resources.minecraft-directories-description": {
+    "message": "新增一或多個供實例使用的外部 .minecraft 資料夾。這些資料夾會與 Axolotl 資料分開保存。"
+  },
+  "app.settings.resources.minecraft-directory-mode": {
+    "message": "遊戲目錄模式"
+  },
+  "app.settings.resources.minecraft-directory-mode.isolated": {
+    "message": "版本隔離"
+  },
+  "app.settings.resources.minecraft-directory-mode.shared": {
+    "message": "共用 .minecraft 目錄"
+  },
+  "app.settings.resources.add-minecraft-directory": {
+    "message": "新增 .minecraft 目錄"
+  },
+  "app.settings.resources.select-minecraft-directory": {
+    "message": "選擇 .minecraft 目錄"
+  },
+  "app.settings.resources.remove-minecraft-directory": {
+    "message": "移除 .minecraft 目錄"
   },
   "app.settings.resources.concurrency.manual": {
     "message": "手動"
@@ -6713,17 +6848,14 @@
   "app.settings.resources.database-backups-description": {
     "message": "重要應用程式的資料備份保存在這裡，以便日後需要時復原。"
   },
-  "app.settings.resources.download-engine": {
-    "message": "下載引擎"
+  "app.settings.resources.doh-enabled": {
+    "message": "使用 DNS over HTTPS"
   },
-  "app.settings.resources.download-engine-description": {
-    "message": "選擇啟動器使用的下載引擎。"
+  "app.settings.resources.doh-settings": {
+    "message": "DNS over HTTPS"
   },
-  "app.settings.resources.download-engine.legacy": {
-    "message": "原生引擎"
-  },
-  "app.settings.resources.download-engine.xmcl": {
-    "message": "XMCL 相容"
+  "app.settings.resources.doh-settings-description": {
+    "message": "透過內建的加密 DNS 服務池解析下載網域。"
   },
   "app.settings.resources.download-mirrors": {
     "message": "下載來源"
@@ -6874,9 +7006,6 @@
   },
   "app.settings.resources.source.open-bmcl-api": {
     "message": "OpenBMCLAPI 鏡像"
-  },
-  "app.settings.resources.source.tianpao": {
-    "message": "Tianpao 鏡像"
   },
   "app.settings.resources.system-downloads-directory": {
     "message": "系統 Downloads 資料夾"
@@ -7070,11 +7199,14 @@
   "app.settings.updates.channel.beta": {
     "message": "Beta"
   },
+  "app.settings.updates.channel.beta-description": {
+    "message": "包含最新功能的新更新，但穩定性較低，更新頻率更快。"
+  },
   "app.settings.updates.channel.copy-database": {
     "message": "複製資料庫"
   },
   "app.settings.updates.channel.copy-database-description": {
-    "message": "是否要將 Release 資料庫複製到 Beta 管道？此操作無法自動復原。"
+    "message": "為避免出現問題，Beta 版將使用獨立的資料儲存，以免影響正式版的正常運作。這看起來是你第一次使用 Beta 版，是否要將穩定版的資料複製到 Beta 版？此操作無法自動還原。"
   },
   "app.settings.updates.channel.copy-database-title": {
     "message": "將 Release 資料複製到 Beta？"
@@ -7082,8 +7214,14 @@
   "app.settings.updates.channel.description": {
     "message": "選擇 Axolotl 接收的啟動器版本。"
   },
+  "app.settings.updates.channel.label": {
+    "message": "管道"
+  },
   "app.settings.updates.channel.release": {
     "message": "Release"
+  },
+  "app.settings.updates.channel.release-description": {
+    "message": "穩定且經過測試的新功能與修正，更新頻率較慢。"
   },
   "app.settings.updates.channel.restart-description": {
     "message": "立即重新啟動 Axolotl 以開始使用新的更新管道，或稍後手動重新啟動。"
@@ -7106,17 +7244,74 @@
   "app.settings.updates.channel.title": {
     "message": "更新管道"
   },
+  "app.settings.updates.database-isolation.active": {
+    "message": "正在使用"
+  },
+  "app.settings.updates.database-isolation.beta": {
+    "message": "Beta 資料庫"
+  },
+  "app.settings.updates.database-isolation.current-database": {
+    "message": "目前正在使用的資料庫"
+  },
+  "app.settings.updates.database-isolation.description": {
+    "message": "Release 和 Beta 使用彼此獨立的資料庫，因此測試 Beta 不會變更 Release 資料。"
+  },
+  "app.settings.updates.database-isolation.release": {
+    "message": "Release 資料庫"
+  },
+  "app.settings.updates.database-isolation.title": {
+    "message": "資料庫隔離"
+  },
+  "app.settings.updates.database-operation.active-target": {
+    "message": "無法覆寫目前正在使用的資料庫。請先重新啟動 Axolotl 並切換更新管道。"
+  },
+  "app.settings.updates.database-operation.beta-to-release": {
+    "message": "從 Beta 複製到 Release"
+  },
+  "app.settings.updates.database-operation.cancel": {
+    "message": "取消"
+  },
+  "app.settings.updates.database-operation.confirm": {
+    "message": "覆寫資料庫"
+  },
+  "app.settings.updates.database-operation.confirm-description": {
+    "message": "這會用 {source} 資料庫的內容完整取代未使用的 {target} 資料庫。此操作無法復原。"
+  },
+  "app.settings.updates.database-operation.confirm-title": {
+    "message": "覆寫資料庫？"
+  },
+  "app.settings.updates.database-operation.failed": {
+    "message": "無法複製資料庫。請確認 Axolotl 未在使用目標資料庫。"
+  },
+  "app.settings.updates.database-operation.label": {
+    "message": "資料庫操作"
+  },
+  "app.settings.updates.database-operation.release-to-beta": {
+    "message": "從 Release 複製到 Beta"
+  },
+  "app.settings.updates.database-operation.success": {
+    "message": "已成功將 {source} 複製到 {target}。"
+  },
   "app.settings.updates.check": {
+    "message": "檢查更新"
+  },
+  "app.settings.updates.check.title": {
     "message": "檢查更新"
   },
   "app.settings.updates.checking": {
     "message": "正在檢查更新..."
   },
-  "app.settings.updates.cnb": {
-    "message": "CNB 管道"
+  "app.settings.updates.current-version": {
+    "message": "目前版本 {version}"
   },
-  "app.settings.updates.description": {
-    "message": "選擇 Axolotl 檢查啟動器更新的管道。"
+  "app.settings.updates.latest-version": {
+    "message": "最新 {channel} 版本：{version}"
+  },
+  "app.settings.updates.latest-version-unavailable": {
+    "message": "最新版本暫時無法取得"
+  },
+  "app.settings.updates.latest-version-loading": {
+    "message": "正在取得"
   },
   "app.settings.updates.disabled": {
     "message": "此組建已停用更新功能。"
@@ -7128,10 +7323,10 @@
     "message": "最新更新可用後立即取得"
   },
   "app.settings.updates.immediate-fetch-description": {
-    "message": "Release 更新預設等待 24 小時。Beta 更新一律立即可用。"
+    "message": "推出最新的穩定變更與修正後，成為第一批取得這些更新的使用者。"
   },
-  "app.settings.updates.github": {
-    "message": "GitHub 管道"
+  "app.settings.updates.immediate-fetch.beta-description": {
+    "message": "Beta 更新一律立即可用。"
   },
   "app.settings.updates.offline": {
     "message": "請連線至網際網路後再檢查更新。"
@@ -7145,17 +7340,14 @@
   "app.settings.updates.paused": {
     "message": "更新已暫停。"
   },
-  "app.settings.updates.portable": {
-    "message": "便攜模式無法自動更新，請手動下載最新版本。"
+  "app.settings.updates.preferences.title": {
+    "message": "更新行為"
   },
   "app.settings.updates.preview-announcement": {
     "message": "預覽更新公告彈出視窗"
   },
   "app.settings.updates.security": {
     "message": "只有透過加密簽章驗證的更新才會被安裝。"
-  },
-  "app.settings.updates.title": {
-    "message": "更新管道"
   },
   "app.settings.updates.up-to-date": {
     "message": "Axolotl 已是最新版本。"
@@ -7333,21 +7525,6 @@
   },
   "app.splash.updating-app-directory": {
     "message": "正在更新應用程式目錄……"
-  },
-  "app.survey-promotion.defer-hint": {
-    "message": "關閉此彈窗後，你仍可以隨時在「設定 → 關於」頁面中找到並填寫問卷。"
-  },
-  "app.survey-promotion.fill-survey": {
-    "message": "填寫問卷"
-  },
-  "app.survey-promotion.intro": {
-    "message": "為了更好地改進 Axolotl Launcher，我們準備了一份簡短的調查問卷，期待聽到你的回饋。"
-  },
-  "app.survey-promotion.reward": {
-    "message": "我們將從填寫問卷的使用者中抽取幸運使用者，贈送 Minecraft 正版帳號（可折現）。"
-  },
-  "app.survey-promotion.title": {
-    "message": "調查問卷"
   },
   "app.symlink-capability.unsupported": {
     "message": "系統不支持軟連結。"
@@ -7552,9 +7729,6 @@
   },
   "app.update-popup.body.download-complete": {
     "message": "Axolotl Launcher v{version} 已完成下載！立即重新載入以更新，或在關閉 Axolotl Launcher 時自動更新。"
-  },
-  "app.update-popup.body.linux": {
-    "message": "Axolotl Launcher v{version} 現已推出。請使用軟體包管理員進行更新，以取得最新的功能與修正！"
   },
   "app.update-popup.body.metered": {
     "message": "Axolotl Launcher v{version} 現已推出！由於你目前使用的是計量付費網路，我們並未自動下載更新。"
@@ -8375,6 +8549,21 @@
   "instance.settings.tabs.general.deleting.button": {
     "message": "刪除中..."
   },
+  "instance.settings.tabs.general.desktop-shortcut": {
+    "message": "桌面捷徑"
+  },
+  "instance.settings.tabs.general.desktop-shortcut.create": {
+    "message": "建立桌面捷徑"
+  },
+  "instance.settings.tabs.general.desktop-shortcut.created": {
+    "message": "桌面捷徑已建立"
+  },
+  "instance.settings.tabs.general.desktop-shortcut.creating": {
+    "message": "正在建立捷徑……"
+  },
+  "instance.settings.tabs.general.desktop-shortcut.description": {
+    "message": "在桌面建立可直接啟動此實例的捷徑。"
+  },
   "instance.settings.tabs.general.duplicate-button": {
     "message": "複製"
   },
@@ -8430,7 +8619,7 @@
     "message": "選擇更新通道"
   },
   "instance.settings.tabs.hooks": {
-    "message": "啟動掛鉤"
+    "message": "啟動準備"
   },
   "instance.settings.tabs.hooks.custom-hooks": {
     "message": "自訂啟動掛鉤"
@@ -8457,7 +8646,7 @@
     "message": "輸入啟動前指令..."
   },
   "instance.settings.tabs.hooks.title": {
-    "message": "遊戲啟動掛鉤"
+    "message": "啟動準備"
   },
   "instance.settings.tabs.hooks.wrapper": {
     "message": "包裝器指令"
@@ -8530,6 +8719,15 @@
   },
   "instance.settings.tabs.window.fullscreen.description": {
     "message": "使遊戲啟動時進入全螢幕模式（透過 options.txt）。"
+  },
+  "instance.settings.tabs.window.maximize-window": {
+    "message": "最大化視窗"
+  },
+  "instance.settings.tabs.window.maximize-window.description": {
+    "message": "啟動時最大化 Minecraft 視窗。"
+  },
+  "instance.settings.tabs.window.maximize-window.unsupported": {
+    "message": "目前的作業系統暫不支援。"
   },
   "instance.settings.tabs.window.height": {
     "message": "高度"
@@ -9713,6 +9911,30 @@
   "minecraft-account.third-party-profile.title": {
     "message": "選擇角色"
   },
+  "minecraft-login.browser": {
+    "message": "使用瀏覽器登入"
+  },
+  "minecraft-login.device-code": {
+    "message": "使用裝置代碼"
+  },
+  "minecraft-login.device-description": {
+    "message": "請在任何裝置上開啟下方頁面，再輸入此代碼。"
+  },
+  "minecraft-login.device-expired": {
+    "message": "此裝置代碼已過期。請重新開始以取得新代碼。"
+  },
+  "minecraft-login.device-starting": {
+    "message": "正在要求裝置代碼……"
+  },
+  "minecraft-login.open-verification": {
+    "message": "開啟驗證頁面"
+  },
+  "minecraft-login.title": {
+    "message": "登入 Minecraft"
+  },
+  "minecraft-login.trouble": {
+    "message": "遇到問題？"
+  },
   "project.description.title": {
     "message": "簡介"
   },
@@ -9886,5 +10108,92 @@
   },
   "app.instance.dependencies.zoom-out": {
     "message": "縮小"
+  },
+  "app.appearance-settings.sections.advanced-interface": {
+    "message": "進階介面"
+  },
+  "app.appearance-settings.sections.content-behavior": {
+    "message": "內容行為"
+  },
+  "app.appearance-settings.sections.home-navigation": {
+    "message": "首頁與導覽"
+  },
+  "app.settings.defaults.sections.after-launch": {
+    "message": "啟動後行為"
+  },
+  "app.settings.defaults.sections.environment": {
+    "message": "環境變數"
+  },
+  "app.settings.defaults.sections.launch-hooks": {
+    "message": "啟動掛鉤"
+  },
+  "app.settings.defaults.sections.window-behavior": {
+    "message": "視窗行為"
+  },
+  "app.settings.developer.feature-flags-section-title": {
+    "message": "功能旗標"
+  },
+  "app.settings.privacy.section-title": {
+    "message": "隱私與資料分享"
+  },
+  "app.settings.resources.sections.data-storage": {
+    "message": "資料目錄與快取"
+  },
+  "app.settings.resources.sections.download-behavior": {
+    "message": "下載行為"
+  },
+  "app.settings.resources.sections.missing-content": {
+    "message": "缺少的內容"
+  },
+  "app.settings.resources.sections.network-authentication": {
+    "message": "網路驗證"
+  },
+  "app.translation-settings.display-section-title": {
+    "message": "翻譯顯示"
+  },
+  "app.settings.feature-flags.project-background": {
+    "message": "專案背景"
+  },
+  "app.settings.feature-flags.page-path": {
+    "message": "頁面路徑"
+  },
+  "app.settings.feature-flags.worlds-tab": {
+    "message": "世界分頁"
+  },
+  "app.settings.feature-flags.worlds-in-home": {
+    "message": "在首頁顯示世界"
+  },
+  "app.settings.feature-flags.server-project-qa": {
+    "message": "伺服器專案問答"
+  },
+  "app.settings.feature-flags.show-version-environment-column": {
+    "message": "顯示版本環境欄"
+  },
+  "app.settings.feature-flags.server-ram-as-bytes-always-on": {
+    "message": "一律以位元組顯示伺服器記憶體"
+  },
+  "app.settings.feature-flags.always-show-app-controls": {
+    "message": "一律顯示應用程式控制項"
+  },
+  "app.settings.feature-flags.skip-non-essential-warnings": {
+    "message": "略過非必要警告"
+  },
+  "app.settings.feature-flags.skip-unknown-pack-warning": {
+    "message": "略過未知整合包警告"
+  },
+  "app.settings.feature-flags.i18n-debug": {
+    "message": "翻譯偵錯"
+  },
+  "app.settings.feature-flags.show-instance-play-time": {
+    "message": "顯示實例遊玩時間"
+  },
+  "app.settings.feature-flags.page-transitions": {
+    "message": "頁面切換動畫"
+  },
+  "app.settings.feature-flags.advanced-filters-collapsed": {
+    "message": "預設摺疊進階篩選"
+  },
+  "app.settings.feature-flags.auto-install-dependencies": {
+    "message": "自動安裝相依項"
   }
 }

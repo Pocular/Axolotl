@@ -15,7 +15,9 @@ use tracing::{info, warn};
 
 pub use crate::launcher::jvm_args::{GcLaunchIntent, GcLaunchReport};
 
-const LAUNCH_PREPARATION_TIMEOUT: Duration = Duration::from_secs(60);
+const DEFAULT_LAUNCH_PREPARATION_TIMEOUT: u64 = 60;
+const MIN_LAUNCH_PREPARATION_TIMEOUT: u64 = 30;
+const MAX_LAUNCH_PREPARATION_TIMEOUT: u64 = 600;
 
 #[derive(Debug, Clone)]
 pub enum QuickPlayType {
@@ -80,7 +82,28 @@ async fn run_with_extra_launch_args_inner(
     extra_launch_args: Option<Vec<String>>,
     gc_intent: Option<GcLaunchIntent>,
 ) -> crate::Result<(ProcessMetadata, Option<GcLaunchReport>)> {
+    if crate::api::instance::has_active_instance_operation(instance_id) {
+        return Err(crate::ErrorKind::InputError(
+			"Wait for the active backup operation to finish before launching this instance"
+				.to_string(),
+		)
+		.into());
+    }
+    let _maintenance_guard =
+        crate::api::instance::lock_instance_maintenance(instance_id).await;
     let state = State::get().await?;
+    let launch_preparation_timeout =
+        crate::state::instances::commands::get_instance_launch_context(
+            instance_id,
+            &state.pool,
+        )
+        .await?
+        .and_then(|context| context.launch_overrides.launch_preparation_timeout)
+        .unwrap_or(DEFAULT_LAUNCH_PREPARATION_TIMEOUT)
+        .clamp(
+            MIN_LAUNCH_PREPARATION_TIMEOUT,
+            MAX_LAUNCH_PREPARATION_TIMEOUT,
+        );
     let default_account = if offline_mode {
         Credentials::get_offline_credential(&state.pool)
             .await?
@@ -97,8 +120,12 @@ async fn run_with_extra_launch_args_inner(
             .ok_or_else(|| crate::ErrorKind::NoCredentialsError.as_error())?
     };
 
+    if default_account.is_offline() {
+        crate::anti_piracy::ensure_offline_allowed().await?;
+    }
+
     tokio::time::timeout(
-        LAUNCH_PREPARATION_TIMEOUT,
+        Duration::from_secs(launch_preparation_timeout),
         run_credentials(
             instance_id,
             &default_account,
@@ -106,13 +133,15 @@ async fn run_with_extra_launch_args_inner(
             offline_mode,
             extra_launch_args,
             gc_intent,
+            launch_preparation_timeout,
         ),
     )
     .await
     .map_err(|_| {
         crate::ErrorKind::LauncherError(
-            "Minecraft launch preparation timed out after 60 seconds"
-                .to_string(),
+            format!(
+                "Minecraft launch preparation timed out after {launch_preparation_timeout} seconds"
+            ),
         )
         .as_error()
     })?
@@ -126,8 +155,16 @@ async fn run_credentials(
     offline_mode: bool,
     extra_launch_args: Option<Vec<String>>,
     gc_intent: Option<GcLaunchIntent>,
+    launch_preparation_timeout: u64,
 ) -> crate::Result<(ProcessMetadata, Option<GcLaunchReport>)> {
     let state = State::get().await?;
+    if let Err(error) =
+        crate::api::instance::sync_game_options_before_launch(instance_id).await
+    {
+        tracing::warn!(
+            "Failed to reconcile game options before launching {instance_id}: {error}"
+        );
+    }
     let settings = Settings::get(&state.pool).await?;
     let context =
         crate::state::instances::commands::get_instance_launch_context(
@@ -168,12 +205,11 @@ async fn run_credentials(
             .into_iter();
 
         if let Some(command) = cmd.next() {
-            let full_path = crate::util::io::canonicalize(
-                state.directories.resolve_game_dir(
-                    &context.instance.path,
-                    context.instance.game_dir_override.as_deref(),
-                ),
-            )?;
+            let full_path =
+                crate::state::instances::commands::instance_content_root(
+                    &state.directories,
+                    &context.instance,
+                )?;
             let mut command = Command::new(command);
             command.args(cmd).current_dir(&full_path).kill_on_drop(true);
             let result = command
@@ -214,6 +250,21 @@ async fn run_credentials(
         .launch_overrides
         .game_resolution
         .unwrap_or(settings.game_resolution);
+    let maximize_window = context
+        .launch_overrides
+        .maximize_window
+        .unwrap_or(settings.maximize_window);
+    let window_title = settings
+        .custom_window_title_enabled
+        .then(|| {
+            context
+                .launch_overrides
+                .window_title
+                .clone()
+                .filter(|value| !value.trim().is_empty())
+                .unwrap_or_else(|| settings.default_window_title.clone())
+        })
+        .filter(|value| !value.trim().is_empty());
     let env_args = context
         .launch_overrides
         .custom_env_vars
@@ -233,6 +284,12 @@ async fn run_credentials(
     } else if settings.force_fullscreen {
         mc_set_options.push(("fullscreen".to_string(), "true".to_string()));
     }
+
+    crate::api::instance::apply_game_options_launcher_overrides(
+        instance_id,
+        &mc_set_options,
+    )
+    .await?;
 
     if credentials.is_microsoft()
         && let Some(project_id) = server_play_project_id(&context.link)
@@ -304,10 +361,11 @@ async fn run_credentials(
     }
 
     if memory.automatic {
-        let instance_path = state.directories.resolve_game_dir(
-            &context.instance.path,
-            context.instance.game_dir_override.as_deref(),
-        );
+        let instance_path =
+            crate::state::instances::commands::instance_content_root(
+                &state.directories,
+                &context.instance,
+            )?;
         memory.maximum = crate::api::jre::automatic_memory_max_mb_for_instance(
             &instance_path,
             matches!(
@@ -329,6 +387,9 @@ async fn run_credentials(
     }
 
     let mut gc_report: Option<GcLaunchReport> = None;
+    if credentials.is_offline() {
+        crate::anti_piracy::ensure_offline_allowed().await?;
+    }
     let process = crate::launcher::launch_minecraft(
         &java_args,
         &env_args,
@@ -336,6 +397,9 @@ async fn run_credentials(
         &wrapper,
         &memory,
         &resolution,
+        maximize_window,
+        window_title,
+        launch_preparation_timeout,
         credentials,
         post_exit_hook,
         &context,

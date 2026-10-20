@@ -1,6 +1,5 @@
 use super::model::{
-    DownloadJobSummary, InstallJobKind, InstallJobSnapshot, InstallJobState,
-    InstallJobStatus,
+    InstallJobKind, InstallJobSnapshot, InstallJobState, InstallJobStatus,
 };
 use crate::state::{InstanceInstallStage, State};
 use chrono::{DateTime, TimeZone, Utc};
@@ -60,6 +59,7 @@ impl InstallJobRecord {
             rollback_error: self.state.rollback_error.clone(),
             pause_reason: self.state.pause_reason.clone(),
             upgrade_result: self.state.upgrade_result.clone(),
+            content_change: self.state.content_change(),
             created: self.created,
             modified: self.modified,
             finished: self.finished,
@@ -102,8 +102,6 @@ pub async fn insert(
     )
     .execute(&app_state.pool)
     .await?;
-
-    sync_download_details(id, state, app_state).await?;
 
     get(id, app_state).await?.ok_or_else(|| {
         crate::ErrorKind::OtherError(format!(
@@ -278,6 +276,16 @@ pub async fn update_state(
     state: &InstallJobState,
     app_state: &State,
 ) -> crate::Result<InstallJobRecord> {
+    let _db_permit =
+        app_state
+            .install_db_semaphore
+            .acquire()
+            .await
+            .map_err(|_| {
+                crate::ErrorKind::OtherError(
+                    "install database semaphore closed".to_string(),
+                )
+            })?;
     let now = Utc::now();
     let json = serde_json::to_string(state)?;
     let instance_id = instance_id(state);
@@ -299,91 +307,51 @@ pub async fn update_state(
     .execute(&app_state.pool)
     .await?;
 
-    sync_download_details(id, state, app_state).await?;
-
     get_required(id, app_state).await
 }
 
-/// Updates the job state JSON and the denormalized download summary columns
-/// in a single statement, using a caller-supplied serialized state so the
-/// reporter mutex is not held across the DB write.
-pub async fn update_state_with_progress_columns(
+/// Persists a recoverable runtime checkpoint without reopening a terminal or
+/// paused job. The status predicate makes a delayed checkpoint harmless when
+/// job finalization wins the database semaphore first.
+pub async fn checkpoint_running_state(
     id: Uuid,
-    json: &str,
-    provider: &str,
-    summary: &DownloadJobSummary,
+    state: &InstallJobState,
     app_state: &State,
-) -> crate::Result<InstallJobRecord> {
+) -> crate::Result<Option<InstallJobRecord>> {
+    let _db_permit =
+        app_state
+            .install_db_semaphore
+            .acquire()
+            .await
+            .map_err(|_| {
+                crate::ErrorKind::OtherError(
+                    "install database semaphore closed".to_string(),
+                )
+            })?;
     let now = Utc::now();
-    let instance_id = instance_id_from_json(json);
+    let json = serde_json::to_string(state)?;
+    let instance_id = instance_id(state);
     let id_value = id.to_string();
     let modified = now.timestamp();
-
-    sqlx::query(
-        "UPDATE install_jobs
-         SET instance_id = (SELECT id FROM instances WHERE id = ?),
-             state = ?, modified = ?, provider = ?, files_total = ?,
-             files_completed = ?, bytes_total = ?, bytes_downloaded = ?
-         WHERE id = ?",
+    let result = sqlx::query(
+        "
+		UPDATE install_jobs
+		SET instance_id = (SELECT id FROM instances WHERE id = ?),
+			state = ?, modified = ?
+		WHERE id = ? AND status = ?
+		",
     )
     .bind(instance_id)
     .bind(json)
     .bind(modified)
-    .bind(provider)
-    .bind(summary.files_total.map(|value| value as i64))
-    .bind(summary.files_completed as i64)
-    .bind(summary.bytes_total.map(|value| value as i64))
-    .bind(summary.bytes_downloaded as i64)
     .bind(id_value)
+    .bind(InstallJobStatus::Running.as_str())
     .execute(&app_state.pool)
     .await?;
-
-    get_required(id, app_state).await
-}
-
-fn instance_id_from_json(json: &str) -> Option<String> {
-    serde_json::from_str::<serde_json::Value>(json)
-        .ok()
-        .and_then(|value| {
-            value
-                .get("target")
-                .and_then(|target| target.get("instance_id"))
-                .and_then(|value| value.as_str())
-                .map(str::to_owned)
-        })
-}
-
-/// Persists a serialized job state. The caller serializes and summarizes
-/// under the reporter lock; this function only performs the DB write so the
-/// reporter mutex is never held across the transaction.
-pub async fn update_progress_state(
-    id: Uuid,
-    json: &str,
-    provider: &str,
-    summary: &DownloadJobSummary,
-    app_state: &State,
-) -> crate::Result<()> {
-    let modified = Utc::now().timestamp();
-    let id_value = id.to_string();
-
-    sqlx::query(
-        "UPDATE install_jobs
-         SET state = ?, modified = ?, provider = ?, files_total = ?,
-             files_completed = ?, bytes_total = ?, bytes_downloaded = ?
-         WHERE id = ?",
-    )
-    .bind(json)
-    .bind(modified)
-    .bind(provider)
-    .bind(summary.files_total.map(|value| value as i64))
-    .bind(summary.files_completed as i64)
-    .bind(summary.bytes_total.map(|value| value as i64))
-    .bind(summary.bytes_downloaded as i64)
-    .bind(id_value)
-    .execute(&app_state.pool)
-    .await?;
-
-    Ok(())
+    if result.rows_affected() == 0 {
+        return Ok(None);
+    }
+    Ok(Some(get_required(id, app_state).await?))
 }
 
 pub async fn update_status(
@@ -392,6 +360,16 @@ pub async fn update_status(
     state: &InstallJobState,
     app_state: &State,
 ) -> crate::Result<InstallJobRecord> {
+    let _db_permit =
+        app_state
+            .install_db_semaphore
+            .acquire()
+            .await
+            .map_err(|_| {
+                crate::ErrorKind::OtherError(
+                    "install database semaphore closed".to_string(),
+                )
+            })?;
     let now = Utc::now();
     let finished = status.is_finished().then_some(now.timestamp());
     let json = serde_json::to_string(state)?;
@@ -417,8 +395,6 @@ pub async fn update_status(
     .execute(&app_state.pool)
     .await?;
 
-    sync_download_details(id, state, app_state).await?;
-
     get_required(id, app_state).await
 }
 
@@ -429,6 +405,16 @@ pub async fn update_status_if(
     state: &InstallJobState,
     app_state: &State,
 ) -> crate::Result<Option<InstallJobRecord>> {
+    let _db_permit =
+        app_state
+            .install_db_semaphore
+            .acquire()
+            .await
+            .map_err(|_| {
+                crate::ErrorKind::OtherError(
+                    "install database semaphore closed".to_string(),
+                )
+            })?;
     let now = Utc::now();
     let finished = status.is_finished().then_some(now.timestamp());
     let json = serde_json::to_string(state)?;
@@ -452,7 +438,6 @@ pub async fn update_status_if(
         return Ok(None);
     }
 
-    sync_download_details(id, state, app_state).await?;
     Ok(Some(get_required(id, app_state).await?))
 }
 
@@ -466,9 +451,11 @@ pub async fn complete_running_job(
     let json = serde_json::to_string(state)?;
     let id_value = id.to_string();
     let instance_id = instance_id(state);
+    let completes_instance_install_stage =
+        state.request.completes_instance_install_stage();
     let mut transaction = app_state.pool.begin().await?;
 
-    if state.request.completes_instance_install_stage()
+    if completes_instance_install_stage
         && let Some(instance_id) = instance_id.as_deref()
     {
         let result = sqlx::query(
@@ -543,13 +530,22 @@ pub async fn complete_running_job(
     }
     transaction.commit().await?;
 
-    if let Err(error) = sync_download_details(id, state, app_state).await {
+    if completes_instance_install_stage
+        && let Some(instance_id) = instance_id.as_deref()
+        && let Err(error) =
+            crate::api::instance::synced_options::reconcile_instance_after_pack_update_with_state(
+                instance_id,
+                app_state,
+            )
+            .await
+    {
         tracing::warn!(
-            job_id = %id,
-            error = %error,
-            "Install job succeeded, but final download details could not be synchronized"
+            %instance_id,
+            %error,
+            "Instance installation completed, but its enabled synchronized options could not be applied"
         );
     }
+
     Ok(Some(get_required(id, app_state).await?))
 }
 
@@ -580,6 +576,140 @@ async fn compare_and_swap_status(
     .execute(pool)
     .await?;
     Ok(result.rows_affected() == 1)
+}
+
+pub async fn dismiss(id: Uuid, app_state: &State) -> crate::Result<()> {
+    let id = id.to_string();
+    let modified = Utc::now().timestamp();
+    sqlx::query!(
+        "
+		UPDATE install_jobs
+		SET dismissed = 1, modified = ?
+		WHERE id = ?
+		",
+        modified,
+        id,
+    )
+    .execute(&app_state.pool)
+    .await?;
+
+    Ok(())
+}
+
+pub async fn clear_finished(app_state: &State) -> crate::Result<u64> {
+    let modified = Utc::now().timestamp();
+    let result = sqlx::query(
+        "UPDATE install_jobs
+         SET dismissed = 1, modified = ?
+         WHERE dismissed = 0
+           AND status IN ('succeeded', 'failed', 'interrupted', 'canceled')",
+    )
+    .bind(modified)
+    .execute(&app_state.pool)
+    .await?;
+    Ok(result.rows_affected())
+}
+
+pub async fn mark_instance_deleted(
+    instance_id: &str,
+    app_state: &State,
+) -> crate::Result<Vec<InstallJobRecord>> {
+    use sqlx::Row;
+
+    let rows = sqlx::query(
+        "
+		SELECT
+			id,
+			instance_id,
+			kind,
+			status,
+			state,
+			created,
+			modified,
+			finished,
+			dismissed
+		FROM install_jobs
+		WHERE instance_id = ? AND dismissed = 0
+		",
+    )
+    .bind(instance_id)
+    .fetch_all(&app_state.pool)
+    .await?;
+
+    let mut updated = Vec::new();
+    for row in rows {
+        let mut record = row_to_record(InstallJobRow {
+            id: row.try_get("id")?,
+            instance_id: row.try_get("instance_id")?,
+            kind: row.try_get("kind")?,
+            status: row.try_get("status")?,
+            state: row.try_get("state")?,
+            created: row.try_get("created")?,
+            modified: row.try_get("modified")?,
+            finished: row.try_get("finished")?,
+            dismissed: row.try_get("dismissed")?,
+        })?;
+        if record.state.instance_deleted() {
+            updated.push(record);
+            continue;
+        }
+        record.state.record_event(
+            super::model::InstallJobEventKind::TargetInstanceDeleted {
+                instance_id: instance_id.to_string(),
+            },
+        );
+        updated.push(update_state(record.id, &record.state, app_state).await?);
+    }
+    Ok(updated)
+}
+
+pub async fn get_required(
+    id: Uuid,
+    app_state: &State,
+) -> crate::Result<InstallJobRecord> {
+    get(id, app_state).await?.ok_or_else(|| {
+        crate::ErrorKind::InputError(format!("Unknown install job {id}")).into()
+    })
+}
+
+fn row_to_record(row: InstallJobRow) -> crate::Result<InstallJobRecord> {
+    Ok(InstallJobRecord {
+        id: Uuid::parse_str(&row.id).map_err(|err| {
+            crate::ErrorKind::InputError(format!(
+                "Invalid install job id {}: {err}",
+                row.id
+            ))
+        })?,
+        instance_id: row.instance_id,
+        kind: InstallJobKind::from_stored_str(&row.kind),
+        status: InstallJobStatus::from_stored_str(&row.status),
+        state: serde_json::from_str(&row.state)?,
+        created: timestamp(row.created),
+        modified: timestamp(row.modified),
+        finished: row.finished.and_then(optional_timestamp),
+        dismissed: row.dismissed != 0,
+    })
+}
+
+fn instance_id(state: &InstallJobState) -> Option<String> {
+    match &state.target {
+        super::model::InstallTarget::NewInstance { instance_id } => {
+            instance_id.clone()
+        }
+        super::model::InstallTarget::ExistingInstance { instance_id } => {
+            Some(instance_id.clone())
+        }
+    }
+}
+
+fn timestamp(value: i64) -> DateTime<Utc> {
+    Utc.timestamp_opt(value, 0)
+        .single()
+        .unwrap_or_else(Utc::now)
+}
+
+fn optional_timestamp(value: i64) -> Option<DateTime<Utc>> {
+    Utc.timestamp_opt(value, 0).single()
 }
 
 #[cfg(test)]
@@ -636,6 +766,10 @@ mod tests {
                 excluded_dependency_project_ids: Vec::new(),
                 force_dependency_project_ids: Vec::new(),
                 dependency_plan_id: None,
+                defer_persistence: false,
+                verification_tx: None,
+                pre_resolved_relative_path: None,
+                expected_file_name: None,
             },
             display_title: "CurseForge content".to_string(),
             display_icon: None,
@@ -1036,162 +1170,4 @@ mod tests {
         .unwrap();
         assert_eq!(status, "queued");
     }
-}
-
-pub async fn dismiss(id: Uuid, app_state: &State) -> crate::Result<()> {
-    let id = id.to_string();
-    let modified = Utc::now().timestamp();
-    sqlx::query!(
-        "
-		UPDATE install_jobs
-		SET dismissed = 1, modified = ?
-		WHERE id = ?
-		",
-        modified,
-        id,
-    )
-    .execute(&app_state.pool)
-    .await?;
-
-    Ok(())
-}
-
-pub async fn clear_finished(app_state: &State) -> crate::Result<u64> {
-    let modified = Utc::now().timestamp();
-    let result = sqlx::query(
-        "UPDATE install_jobs
-         SET dismissed = 1, modified = ?
-         WHERE dismissed = 0
-           AND status IN ('succeeded', 'failed', 'interrupted', 'canceled')",
-    )
-    .bind(modified)
-    .execute(&app_state.pool)
-    .await?;
-    Ok(result.rows_affected())
-}
-
-pub async fn mark_instance_deleted(
-    instance_id: &str,
-    app_state: &State,
-) -> crate::Result<Vec<InstallJobRecord>> {
-    use sqlx::Row;
-
-    let rows = sqlx::query(
-        "
-		SELECT
-			id,
-			instance_id,
-			kind,
-			status,
-			state,
-			created,
-			modified,
-			finished,
-			dismissed
-		FROM install_jobs
-		WHERE instance_id = ? AND dismissed = 0
-		",
-    )
-    .bind(instance_id)
-    .fetch_all(&app_state.pool)
-    .await?;
-
-    let mut updated = Vec::new();
-    for row in rows {
-        let mut record = row_to_record(InstallJobRow {
-            id: row.try_get("id")?,
-            instance_id: row.try_get("instance_id")?,
-            kind: row.try_get("kind")?,
-            status: row.try_get("status")?,
-            state: row.try_get("state")?,
-            created: row.try_get("created")?,
-            modified: row.try_get("modified")?,
-            finished: row.try_get("finished")?,
-            dismissed: row.try_get("dismissed")?,
-        })?;
-        if record.state.instance_deleted() {
-            updated.push(record);
-            continue;
-        }
-        record.state.record_event(
-            super::model::InstallJobEventKind::TargetInstanceDeleted {
-                instance_id: instance_id.to_string(),
-            },
-        );
-        updated.push(update_state(record.id, &record.state, app_state).await?);
-    }
-    Ok(updated)
-}
-
-pub async fn get_required(
-    id: Uuid,
-    app_state: &State,
-) -> crate::Result<InstallJobRecord> {
-    get(id, app_state).await?.ok_or_else(|| {
-        crate::ErrorKind::InputError(format!("Unknown install job {id}")).into()
-    })
-}
-
-fn row_to_record(row: InstallJobRow) -> crate::Result<InstallJobRecord> {
-    Ok(InstallJobRecord {
-        id: Uuid::parse_str(&row.id).map_err(|err| {
-            crate::ErrorKind::InputError(format!(
-                "Invalid install job id {}: {err}",
-                row.id
-            ))
-        })?,
-        instance_id: row.instance_id,
-        kind: InstallJobKind::from_stored_str(&row.kind),
-        status: InstallJobStatus::from_stored_str(&row.status),
-        state: serde_json::from_str(&row.state)?,
-        created: timestamp(row.created),
-        modified: timestamp(row.modified),
-        finished: row.finished.and_then(optional_timestamp),
-        dismissed: row.dismissed != 0,
-    })
-}
-
-fn instance_id(state: &InstallJobState) -> Option<String> {
-    match &state.target {
-        super::model::InstallTarget::NewInstance { instance_id } => {
-            instance_id.clone()
-        }
-        super::model::InstallTarget::ExistingInstance { instance_id } => {
-            Some(instance_id.clone())
-        }
-    }
-}
-
-fn timestamp(value: i64) -> DateTime<Utc> {
-    Utc.timestamp_opt(value, 0)
-        .single()
-        .unwrap_or_else(Utc::now)
-}
-
-fn optional_timestamp(value: i64) -> Option<DateTime<Utc>> {
-    Utc.timestamp_opt(value, 0).single()
-}
-
-async fn sync_download_details(
-    id: Uuid,
-    state: &InstallJobState,
-    app_state: &State,
-) -> crate::Result<()> {
-    let id_value = id.to_string();
-    let summary = state.download_summary();
-    sqlx::query(
-        "UPDATE install_jobs
-         SET provider = ?, files_total = ?, files_completed = ?,
-             bytes_total = ?, bytes_downloaded = ?
-         WHERE id = ?",
-    )
-    .bind(state.provider().as_str())
-    .bind(summary.files_total.map(|value| value as i64))
-    .bind(summary.files_completed as i64)
-    .bind(summary.bytes_total.map(|value| value as i64))
-    .bind(summary.bytes_downloaded as i64)
-    .bind(&id_value)
-    .execute(&app_state.pool)
-    .await?;
-    Ok(())
 }

@@ -15,6 +15,7 @@ use crate::util::fetch::{self, write_cached_icon};
 use crate::util::io;
 use chrono::Utc;
 use serde::{Deserialize, Serialize};
+use std::path::{Path, PathBuf};
 use tracing::{info, trace};
 use uuid::Uuid;
 
@@ -50,6 +51,20 @@ pub(crate) async fn create_instance(
     }
 
     let result = async {
+        if let Some(game_dir_override) = input.game_dir_override.as_deref() {
+            // External game directories are created before the launcher
+            // resolves them with `canonicalize` during installation.
+            io::create_dir_all(&PathBuf::from(game_dir_override)).await?;
+            if is_version_isolated_game_dir(Path::new(game_dir_override)) {
+                // Keep the generic direct-link resolver on the isolated
+                // version directory even while it is still empty.
+                io::create_dir_all(
+                    PathBuf::from(game_dir_override).join("mods"),
+                )
+                .await?;
+            }
+        }
+
         info!(
             "Creating instance at path {}",
             &io::canonicalize(&full_path)?.display()
@@ -82,6 +97,12 @@ pub(crate) async fn create_instance(
             name: input.name,
             icon_path,
             symlink_target: input.symlink_target,
+            linked_launcher: None,
+            linked_launcher_root: None,
+            linked_dot_minecraft: None,
+            linked_version_id: None,
+            linked_version_json_path: None,
+            linked_game_dir_mode: None,
             game_dir_override: input.game_dir_override,
             created: now,
             modified: now,
@@ -114,6 +135,12 @@ pub(crate) async fn create_instance(
 
         let mut tx = state.pool.begin().await?;
         instance_rows::insert_instance(&instance, &mut tx).await?;
+        sqlx::query(
+            "INSERT INTO instance_sync_preferences (instance_id, feature, enabled) SELECT ?, feature, new_instance_default FROM sync_feature_settings",
+        )
+        .bind(&instance_id)
+        .execute(&mut *tx)
+        .await?;
         content_rows::insert_content_set(&content_set, &mut tx).await?;
         loader_component_rows::replace_loader_components(
             &instance_id,
@@ -136,10 +163,14 @@ pub(crate) async fn create_instance(
 
         config_sync::mark_dirty(&instance_id);
 
+        let content_root = crate::state::instances::commands::instance_content_root(
+            &state.directories,
+            &instance,
+        )?;
         crate::state::instances::watcher::watch_instance_folder(
             &instance.id,
             &instance.path,
-            &state.directories.instance_game_dir(&instance),
+            &content_root,
             &state.file_watcher,
         )
         .await;
@@ -155,7 +186,7 @@ pub(crate) async fn create_instance(
     result
 }
 
-async fn resolve_instance_path(
+pub(crate) async fn resolve_instance_path(
     name: &str,
     path: Option<&str>,
     state: &State,
@@ -181,6 +212,13 @@ async fn resolve_instance_path(
 
         which += 1;
     }
+}
+
+fn is_version_isolated_game_dir(path: &Path) -> bool {
+    path.parent()
+        .and_then(Path::file_name)
+        .and_then(|name| name.to_str())
+        .is_some_and(|name| name.eq_ignore_ascii_case("versions"))
 }
 
 async fn path_available(
@@ -250,11 +288,17 @@ async fn fetch_icon_bytes(
     icon_url: &str,
     state: &State,
 ) -> crate::Result<bytes::Bytes> {
+    let normalized =
+        crate::util::download::retired_sources::normalize(icon_url)?;
+    let icon_url = normalized.as_ref();
     // Prefer a direct connection for CDN hosts that are commonly blocked or
     // broken through local HTTP proxies (e.g. media.forgecdn.net).
     if is_direct_cdn_icon_url(icon_url) {
         let permit = state.fetch_semaphore.0.acquire().await?;
-        let response = DIRECT_ICON_CLIENT.get(icon_url).send().await?;
+        let response = crate::util::download::native_request::send_cdn_request(
+            DIRECT_ICON_CLIENT.get(icon_url),
+        )
+        .await?;
         drop(permit);
         if !response.status().is_success() {
             return Err(crate::ErrorKind::OtherError(format!(
@@ -290,6 +334,7 @@ fn is_direct_cdn_icon_url(url: &str) -> bool {
 static DIRECT_ICON_CLIENT: std::sync::LazyLock<reqwest::Client> =
     std::sync::LazyLock::new(|| {
         reqwest::Client::builder()
+            .redirect(reqwest::redirect::Policy::none())
             .connect_timeout(std::time::Duration::from_secs(15))
             .read_timeout(std::time::Duration::from_secs(30))
             .user_agent(crate::launcher_user_agent())

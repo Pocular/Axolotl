@@ -146,7 +146,12 @@ impl CacheValueType {
 
     pub fn expiry(&self) -> i64 {
         match self {
-            CacheValueType::LoaderManifest => BACKGROUND_REFRESH_THRESHOLD,
+            // Newly published game versions must become selectable without an
+            // app restart, so version manifests share the loader refresh window.
+            CacheValueType::LoaderManifest
+            | CacheValueType::MinecraftManifest
+            | CacheValueType::GameVersions
+            | CacheValueType::ProjectVersions => BACKGROUND_REFRESH_THRESHOLD,
             _ => PERMANENT_CACHE_SECONDS,
         }
     }
@@ -198,12 +203,63 @@ mod loader_manifest_expiry_tests {
     };
 
     #[test]
-    fn loader_manifests_expire_at_refresh_threshold() {
+    fn version_manifests_expire_at_refresh_threshold() {
         assert_eq!(
             CacheValueType::LoaderManifest.expiry(),
             BACKGROUND_REFRESH_THRESHOLD
         );
+        assert_eq!(
+            CacheValueType::MinecraftManifest.expiry(),
+            BACKGROUND_REFRESH_THRESHOLD
+        );
+        assert_eq!(
+            CacheValueType::GameVersions.expiry(),
+            BACKGROUND_REFRESH_THRESHOLD
+        );
+        assert_eq!(
+            CacheValueType::ProjectVersions.expiry(),
+            BACKGROUND_REFRESH_THRESHOLD
+        );
         assert_eq!(CacheValueType::Project.expiry(), PERMANENT_CACHE_SECONDS);
+    }
+}
+
+/// Expire rows written under a longer historical TTL when policy shrinks.
+fn cache_entry_expired(type_: CacheValueType, expires: i64, now: i64) -> bool {
+    expires <= now || expires.saturating_sub(now) > type_.expiry()
+}
+
+#[cfg(test)]
+mod cache_expiry_tests {
+    use super::{
+        BACKGROUND_REFRESH_THRESHOLD, CacheValueType, PERMANENT_CACHE_SECONDS,
+        cache_entry_expired,
+    };
+
+    #[test]
+    fn project_version_cache_rejects_legacy_permanent_expiry() {
+        let now = 1_000_000;
+
+        assert!(cache_entry_expired(
+            CacheValueType::ProjectVersions,
+            now + PERMANENT_CACHE_SECONDS,
+            now,
+        ));
+        assert!(!cache_entry_expired(
+            CacheValueType::ProjectVersions,
+            now + BACKGROUND_REFRESH_THRESHOLD,
+            now,
+        ));
+        assert!(!cache_entry_expired(
+            CacheValueType::Project,
+            now + PERMANENT_CACHE_SECONDS,
+            now,
+        ));
+        assert!(cache_entry_expired(
+            CacheValueType::ProjectVersions,
+            now - 1,
+            now,
+        ));
     }
 }
 
@@ -221,10 +277,11 @@ fn cache_read_failure(
         }
         _ => None,
     };
-    let remote_suffix = remote_error
-        .is_some()
-        .then_some("; remote replacement data was unavailable")
-        .unwrap_or_default();
+    let remote_suffix = if remote_error.is_some() {
+        "; remote replacement data was unavailable"
+    } else {
+        Default::default()
+    };
     crate::ErrorKind::CacheReadError {
         cache_type: cache_type.as_str().to_string(),
         message: format!("{cache_error}{remote_suffix}"),
@@ -1850,6 +1907,36 @@ impl CachedEntry {
             return;
         }
 
+        // SQLite only permits one writer. Fetched API cache data is
+        // reconstructible, so never let it enter the gaps between install
+        // database batches and delay the next content registration. Outside
+        // an active install, coordinate refreshes so SQLx does not start
+        // dozens of INSERT statements waiting on the same write lock.
+        // Standalone cache tests can run without global application state and
+        // simply use SQLite's normal locking.
+        let app_state = crate::State::get_if_initialized();
+        let _write_permit = match app_state.as_ref() {
+            Some(state) if !state.install_job_cancellations.is_empty() => {
+                tracing::debug!(
+                    cache_type = ?type_,
+                    entry_count = entries.len(),
+                    "Skipping cache persistence while an install is active"
+                );
+                return;
+            }
+            Some(state) => match state.install_db_semaphore.try_acquire() {
+                Ok(permit) => Some(permit),
+                Err(_) => {
+                    tracing::debug!(
+                        cache_type = ?type_,
+                        entry_count = entries.len(),
+                        "Skipping cache refresh while database writer is busy"
+                    );
+                    return;
+                }
+            },
+            None => None,
+        };
         if let Err(error) = Self::upsert_many(entries, pool).await {
             Self::log_cache_write_failure(
                 type_,
@@ -1983,7 +2070,7 @@ impl CachedEntry {
                     None
                 };
 
-                if row.expires <= now {
+                if cache_entry_expired(type_, row.expires, now) {
                     if cache_behaviour == CacheBehaviour::MustRevalidate {
                         continue;
                     } else {
@@ -2699,23 +2786,27 @@ impl CachedEntry {
                 for key in &keys {
                     let path =
                         key.split_once('-').map(|x| x.1).unwrap_or_default();
+                    // Directly associated instances embed an absolute linked
+                    // root in the key; it needs no base resolution.
+                    if std::path::Path::new(path).is_absolute() {
+                        continue;
+                    }
                     if let Some((instance_path, _)) =
                         path.split_once('/').or_else(|| path.split_once('\\'))
+                        && !base_dirs.contains_key(instance_path)
                     {
-                        if !base_dirs.contains_key(instance_path) {
-                            let override_dir = crate::state::instances::adapters::sqlite::instance_rows::get_game_dir_override_by_path(
+                        let override_dir = crate::state::instances::adapters::sqlite::instance_rows::get_game_dir_override_by_path(
                                     instance_path,
                                     &state.pool,
                                 )
                                 .await?;
-                            base_dirs.insert(
-                                instance_path.to_string(),
-                                state.directories.resolve_game_dir(
-                                    instance_path,
-                                    override_dir.as_deref(),
-                                ),
-                            );
-                        }
+                        base_dirs.insert(
+                            instance_path.to_string(),
+                            state.directories.resolve_game_dir(
+                                instance_path,
+                                override_dir.as_deref(),
+                            ),
+                        );
                     }
                 }
 
@@ -2727,26 +2818,35 @@ impl CachedEntry {
                     let path =
                         key.split_once('-').map(|x| x.1).unwrap_or_default();
 
-                    let (base_dir, relative) = match path
-                        .split_once('/')
-                        .or_else(|| path.split_once('\\'))
+                    // Absolute keys (directly associated instances) point at
+                    // the linked installation itself; joining would strip the
+                    // base, so use them as-is. `Path::join` would actually
+                    // replace the base for absolute paths, but the split below
+                    // destroys the leading separator first.
+                    let full_path = if std::path::Path::new(path).is_absolute()
                     {
-                        Some((instance_path, relative)) => {
-                            let base_dir = base_dirs
-                                .get(instance_path)
-                                .cloned()
-                                .unwrap_or_else(|| {
-                                    state.directories.instances_dir()
-                                });
-                            (base_dir, relative.to_string())
-                        }
-                        None => (
-                            state.directories.instances_dir(),
-                            path.to_string(),
-                        ),
+                        PathBuf::from(path)
+                    } else {
+                        let (base_dir, relative) = match path
+                            .split_once('/')
+                            .or_else(|| path.split_once('\\'))
+                        {
+                            Some((instance_path, relative)) => {
+                                let base_dir = base_dirs
+                                    .get(instance_path)
+                                    .cloned()
+                                    .unwrap_or_else(|| {
+                                        state.directories.instances_dir()
+                                    });
+                                (base_dir, relative.to_string())
+                            }
+                            None => (
+                                state.directories.instances_dir(),
+                                path.to_string(),
+                            ),
+                        };
+                        base_dir.join(relative)
                     };
-
-                    let full_path = base_dir.join(relative);
 
                     let mut file = tokio::fs::File::open(&full_path).await?;
                     let size = file.metadata().await?.len();
@@ -3313,22 +3413,47 @@ impl CachedEntry {
         project_ids: Vec<String>,
         pool: &SqlitePool,
     ) -> crate::Result<()> {
+        let entry =
+            Self::modpack_files_entry(version_id, file_hashes, project_ids);
+        Self::upsert_many(&[entry], pool).await
+    }
+
+    pub(crate) async fn cache_modpack_files_best_effort(
+        version_id: &str,
+        file_hashes: Vec<String>,
+        project_ids: Vec<String>,
+        pool: &SqlitePool,
+    ) {
+        let entry =
+            Self::modpack_files_entry(version_id, file_hashes, project_ids);
+        Self::persist_fetched_cache_best_effort(
+            CacheValueType::ModpackFiles,
+            &[entry],
+            pool,
+            CacheRefreshSource::Foreground,
+        )
+        .await;
+    }
+
+    fn modpack_files_entry(
+        version_id: &str,
+        file_hashes: Vec<String>,
+        project_ids: Vec<String>,
+    ) -> CachedEntry {
         let data = CachedModpackFiles {
             version_id: version_id.to_string(),
             file_hashes,
             project_ids,
         };
 
-        let entry = CachedEntry {
+        CachedEntry {
             id: version_id.to_string(),
             alias: None,
             expires: Utc::now().timestamp()
                 + CacheValueType::ModpackFiles.expiry(),
             type_: CacheValueType::ModpackFiles,
             data: Some(CacheValue::ModpackFiles(data)),
-        };
-
-        Self::upsert_many(&[entry], pool).await
+        }
     }
 
     /// Get modpack file hashes from cache

@@ -1,6 +1,14 @@
 ; https://nsis.sourceforge.io/ShellExecWait
 !define AXL_INSTALLER_UI_PATH "${__FILEDIR__}\..\..\..\target\release\axolotl-installer-ui.exe"
 
+!macro AxlCheckReparseRemoved PATH
+    System::Call 'kernel32::GetFileAttributes(t "${PATH}") i.r5'
+    ${If} $5 != -1
+        SetErrorLevel 2
+        Abort "Could not remove directory link: ${PATH}"
+    ${EndIf}
+!macroend
+
 !macro ShellExecWait verb app param workdir show exitoutvar ;only app and show must be != "", every thing else is optional
     #define SEE_MASK_NOCLOSEPROCESS 0x40
     System::Store S
@@ -33,8 +41,29 @@
 Var /GLOBAL OldInstallDir
 
 !macro NSIS_HOOK_PREINSTALL
-    SetShellVarContext all
-    ${If} ${FileExists} "$SMPROGRAMS\${PRODUCTNAME}.lnk"
+    ; The updater is normally launched silently by the Tauri updater plugin.
+    ; A current-user install can still target a protected directory, so elevate
+    ; only the in-place update process instead of requiring UAC for first-time
+    ; current-user installs.
+    ${If} $UpdateMode == 1
+      ${GetOptions} $CMDLINE "/ELEVATED" $0
+      ${If} ${Errors}
+        UserInfo::GetAccountType
+        Pop $0
+        ${If} $0 != "Admin"
+          ExecShell "runas" "$EXEPATH" '$CMDLINE /ELEVATED'
+          Abort
+        ${EndIf}
+      ${EndIf}
+    ${EndIf}
+
+    ; The updater already stops the running process and passes /UPDATE. Do not
+    ; run the legacy uninstall/migration path during an in-place update, since
+    ; it can resolve a different installation from the registry and relaunch
+    ; the old executable after the new files are installed.
+    ${If} $UpdateMode <> 1
+      SetShellVarContext all
+      ${If} ${FileExists} "$SMPROGRAMS\${PRODUCTNAME}.lnk"
         UserInfo::GetAccountType
         Pop $0
         ${If} $0 != "Admin"
@@ -55,8 +84,9 @@ Var /GLOBAL OldInstallDir
             MessageBox MB_ICONEXCLAMATION|MB_OK "Failed to uninstall old global installation"
             Abort
         ${EndIf}
+      ${EndIf}
+      SetShellVarContext current
     ${EndIf}
-    SetShellVarContext current
 !macroend
 
 !macro NSIS_HOOK_POSTINSTALL
@@ -91,6 +121,16 @@ Function un.RemoveReparsePoints
     Push $4 ; entry attributes
     Push $5 ; spare
 
+    ; A root junction must be removed before enumeration, too.
+    System::Call 'kernel32::GetFileAttributes(t r0) i.r4'
+    IntOp $5 $4 & 0x400
+    ${If} $4 != -1
+    ${AndIf} $5 != 0
+        RmDir "$0"
+        !insertmacro AxlCheckReparseRemoved "$0"
+        Goto restore
+    ${EndIf}
+
     FindFirst $1 $2 "$0\*"
     ${If} ${Errors}
         Goto done
@@ -113,9 +153,11 @@ Function un.RemoveReparsePoints
 
             removeDirLink:
                 RmDir "$3" ; removes the junction / directory symlink itself
+                !insertmacro AxlCheckReparseRemoved "$3"
                 Goto next
             removeFileLink:
                 Delete "$3" ; removes the file symlink itself
+                !insertmacro AxlCheckReparseRemoved "$3"
                 Goto next
 
         notReparse:
@@ -134,6 +176,7 @@ Function un.RemoveReparsePoints
 
     done:
         FindClose $1
+    restore:
         Pop $5
         Pop $4
         Pop $3

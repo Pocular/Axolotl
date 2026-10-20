@@ -1,6 +1,7 @@
 //! Theseus state management system
 use crate::util::fetch::{FetchSemaphore, IoSemaphore};
 use dashmap::DashMap;
+use parking_lot::RwLock;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use std::sync::atomic::{
@@ -28,12 +29,22 @@ pub use self::instances::*;
 mod settings;
 pub use self::settings::*;
 
+mod game_options;
+pub(crate) use self::game_options::*;
+
 mod proxy_settings;
 
 mod installer_settings;
 
 mod process;
 pub use self::process::*;
+
+pub(crate) async fn instance_has_running_process(
+    instance_id: &str,
+    state: &State,
+) -> crate::Result<bool> {
+    Ok(state.process_manager.has_instance_process(instance_id))
+}
 
 mod java_globals;
 pub use self::java_globals::*;
@@ -70,6 +81,8 @@ pub use self::mr_auth::*;
 mod legacy_converter;
 
 pub mod attached_world_data;
+pub(crate) mod content_store;
+pub mod instance_groups;
 pub mod server_join_log;
 
 // Global state
@@ -147,7 +160,34 @@ pub struct State {
 
     pub(crate) pool: SqlitePool,
 
+    // Cloning reqwest::Client retains its underlying connection pool.
+    configured_http_client: RwLock<crate::util::fetch::DownloadClients>,
+    configured_http_client_update: AsyncMutex<()>,
+
     pub(crate) file_watcher: FileWatcher,
+	pub(crate) screenshot_locks: DashMap<String, Arc<AsyncMutex<()>>>,
+	pub(crate) synced_options_lock: Arc<AsyncMutex<()>>,
+	pub(crate) game_locale_indexer: crate::api::instance::synced_options::game_options::locales::GameLocaleIndexer,
+}
+
+impl State {
+    pub(crate) async fn lock_instance_screenshots(
+        &self,
+        instance_id: &str,
+    ) -> tokio::sync::OwnedMutexGuard<()> {
+        self.screenshot_locks
+            .entry(instance_id.to_string())
+            .or_insert_with(|| Arc::new(AsyncMutex::new(())))
+            .clone()
+            .lock_owned()
+            .await
+    }
+
+    pub(crate) async fn lock_synced_options(
+        &self,
+    ) -> tokio::sync::OwnedMutexGuard<()> {
+        self.synced_options_lock.clone().lock_owned().await
+    }
 }
 
 #[derive(Default)]
@@ -266,6 +306,20 @@ impl InstanceLockManager {
             inner: Some(inner),
             owner: None,
             instance_id: instance_id.to_string(),
+        }
+    }
+
+    pub(crate) async fn lock_exclusive_cancellable(
+        self: &Arc<Self>,
+        instance_id: &str,
+        cancellation: &tokio_util::sync::CancellationToken,
+    ) -> crate::Result<InstanceLockGuard> {
+        tokio::select! {
+            biased;
+            _ = cancellation.cancelled() => Err(crate::ErrorKind::OtherError(
+                format!("Install was canceled while waiting for the content lock for {instance_id}"),
+            ).into()),
+            guard = self.lock_exclusive(instance_id) => Ok(guard),
         }
     }
 }
@@ -545,8 +599,10 @@ impl State {
     /// Get the current launcher state, waiting for initialization
     pub async fn get() -> crate::Result<Arc<Self>> {
         if !LAUNCHER_STATE.initialized() {
-            tracing::error!(
-                "Attempted to get state before it is initialized - this should never happen!"
+            // Frontend commands routinely race initialize_state; wait instead of
+            // treating the first poll as a hard error.
+            tracing::debug!(
+                "State not ready yet; waiting for launcher initialization before serving command"
             );
             while !LAUNCHER_STATE.initialized() {
                 tokio::time::sleep(std::time::Duration::from_millis(100)).await;
@@ -610,11 +666,50 @@ impl State {
         &self,
         config: &crate::util::proxy::ProxyConfig,
     ) -> crate::Result<()> {
-        crate::state::proxy_settings::set(&self.pool, config).await
+        let _update = self.configured_http_client_update.lock().await;
+        let settings = Settings::get(&self.pool).await?;
+        let client = crate::util::fetch::DownloadClients::build(
+            config,
+            settings.ignore_ssl_errors,
+            settings.doh_enabled,
+        )?;
+        crate::state::proxy_settings::set(&self.pool, config).await?;
+        *self.configured_http_client.write() = client;
+        Ok(())
     }
 
-    pub(crate) fn auto_prefers_mirror(&self) -> bool {
-        self.auto_prefers_mirror.load(Ordering::Relaxed)
+    pub(crate) async fn update_http_client_for_settings(
+        &self,
+        settings: &Settings,
+    ) -> crate::Result<()> {
+        let _update = self.configured_http_client_update.lock().await;
+        let proxy = crate::state::proxy_settings::get(&self.pool).await?;
+        let res = {
+            let current = self.configured_http_client.read();
+            current.proxy == proxy
+                && current.ignore_ssl_errors == settings.ignore_ssl_errors
+                && current.doh_enabled == settings.doh_enabled
+        };
+        if res {
+            return Ok(());
+        }
+        let client = crate::util::fetch::DownloadClients::build(
+            &proxy,
+            settings.ignore_ssl_errors,
+            settings.doh_enabled,
+        )?;
+        *self.configured_http_client.write() = client;
+        Ok(())
+    }
+
+    pub(crate) fn configured_http_client(&self) -> reqwest::Client {
+        self.configured_http_client.read().metadata.clone()
+    }
+
+    pub(crate) fn download_clients(
+        &self,
+    ) -> crate::util::fetch::DownloadClients {
+        self.configured_http_client.read().clone()
     }
 
     pub(crate) fn download_concurrency(&self) -> usize {
@@ -639,6 +734,11 @@ impl State {
 
     pub(crate) fn record_download_error(&self) {
         self.download_sample_errors.fetch_add(1, Ordering::AcqRel);
+    }
+
+    pub(crate) fn record_download_throttle(&self) {
+        self.download_sample_throttles
+            .fetch_add(1, Ordering::AcqRel);
     }
 
     pub(crate) fn update_download_settings(
@@ -693,6 +793,7 @@ impl State {
         let mut controller = AutoConcurrencyController::default();
         loop {
             interval.tick().await;
+            crate::util::download::local_resources::sample_cpu().await;
             if !self.auto_concurrent_downloads.load(Ordering::Acquire) {
                 controller = AutoConcurrencyController::default();
                 self.download_sample_bytes.swap(0, Ordering::AcqRel);
@@ -828,10 +929,17 @@ impl State {
         let download_semaphore =
             FetchSemaphore(Semaphore::new(download_concurrency));
         let io_semaphore =
-            IoSemaphore(Semaphore::new(settings.max_concurrent_writes));
+            IoSemaphore(Semaphore::new(settings.max_concurrent_writes.max(1)));
         let api_semaphore =
             FetchSemaphore(Semaphore::new(download_concurrency));
         let auto_prefers_mirror = settings.auto_prefers_mirror();
+        let proxy_config = proxy_settings::get(&pool).await?;
+        let configured_http_client =
+            crate::util::fetch::DownloadClients::build(
+                &proxy_config,
+                settings.ignore_ssl_errors,
+                settings.doh_enabled,
+            )?;
 
         tracing::info!("Initializing directories");
         DirectoryInfo::move_launcher_directory(
@@ -905,7 +1013,12 @@ impl State {
             restart_after_pending_update: AtomicBool::new(false),
             instance_locks: Arc::new(InstanceLockManager::default()),
             pool,
+            configured_http_client: RwLock::new(configured_http_client),
+            configured_http_client_update: AsyncMutex::new(()),
             file_watcher,
+            screenshot_locks: DashMap::new(),
+            synced_options_lock: Arc::new(AsyncMutex::new(())),
+            game_locale_indexer: Default::default(),
             // app_identifier,
         }))
     }
@@ -917,6 +1030,46 @@ impl State {
         instance_id: &str,
     ) -> InstanceLockGuard {
         self.instance_locks.lock(instance_id).await
+    }
+
+    /// Acquire the content lock without allowing a UI operation to wait forever.
+    pub(crate) async fn lock_instance_content_with_timeout(
+        &self,
+        instance_id: &str,
+        timeout: std::time::Duration,
+    ) -> crate::Result<InstanceLockGuard> {
+        tokio::time::timeout(timeout, self.lock_instance_content(instance_id))
+            .await
+            .map_err(|_| {
+                crate::ErrorKind::InputError(
+                    "Timed out waiting for another content operation to finish"
+                        .to_string(),
+                )
+                .into()
+            })
+    }
+
+    /// Acquire the single writer permit without allowing a content operation
+    /// to wait forever behind a stale install checkpoint.
+    pub(crate) async fn acquire_install_db_permit(
+        &self,
+    ) -> crate::Result<tokio::sync::SemaphorePermit<'_>> {
+        let permit = tokio::time::timeout(
+            Duration::from_secs(20),
+            self.install_db_semaphore.acquire(),
+        )
+        .await
+        .map_err(|_| {
+            crate::ErrorKind::InputError(
+                "Timed out waiting for the install database writer".to_string(),
+            )
+        })?
+        .map_err(|_| {
+            crate::ErrorKind::OtherError(
+                "install database semaphore closed".to_string(),
+            )
+        })?;
+        Ok(permit)
     }
 
     pub(crate) async fn lock_instance_content_exclusive(
@@ -933,6 +1086,13 @@ pub(crate) async fn test_state(
     pool: SqlitePool,
 ) -> crate::Result<Arc<State>> {
     let file_watcher = instances::watcher::init_watcher().await?;
+    let proxy_config = proxy_settings::get(&pool).await?;
+    let settings = Settings::get(&pool).await?;
+    let configured_http_client = crate::util::fetch::DownloadClients::build(
+        &proxy_config,
+        settings.ignore_ssl_errors,
+        settings.doh_enabled,
+    )?;
 
     Ok(Arc::new(State {
         directories,
@@ -968,7 +1128,12 @@ pub(crate) async fn test_state(
         restart_after_pending_update: AtomicBool::new(false),
         instance_locks: Arc::new(InstanceLockManager::default()),
         pool,
+        configured_http_client: RwLock::new(configured_http_client),
+        configured_http_client_update: AsyncMutex::new(()),
         file_watcher,
+        screenshot_locks: DashMap::new(),
+        synced_options_lock: Arc::new(AsyncMutex::new(())),
+        game_locale_indexer: Default::default(),
     }))
 }
 
@@ -1069,6 +1234,46 @@ mod auto_concurrency_tests {
 mod instance_lock_tests {
     use super::*;
     use std::time::Duration;
+
+    #[tokio::test]
+    async fn canceled_archive_writer_does_not_wait_for_busy_instance() {
+        let manager = Arc::new(InstanceLockManager::default());
+        let holder = manager.lock_exclusive("instance-1").await;
+        let cancellation = tokio_util::sync::CancellationToken::new();
+        let mut waiter = Box::pin(
+            manager.lock_exclusive_cancellable("instance-1", &cancellation),
+        );
+        assert!(
+            tokio::time::timeout(Duration::from_millis(20), &mut waiter)
+                .await
+                .is_err()
+        );
+        cancellation.cancel();
+        let result = tokio::time::timeout(Duration::from_millis(500), waiter)
+            .await
+            .unwrap();
+        assert!(result.err().unwrap().to_string().contains("canceled"));
+        drop(holder);
+        tokio::time::timeout(
+            Duration::from_millis(500),
+            manager.lock_exclusive("instance-1"),
+        )
+        .await
+        .unwrap();
+    }
+
+    #[tokio::test]
+    async fn canceled_archive_writer_does_not_acquire_available_instance() {
+        let manager = Arc::new(InstanceLockManager::default());
+        let cancellation = tokio_util::sync::CancellationToken::new();
+        cancellation.cancel();
+        assert!(
+            manager
+                .lock_exclusive_cancellable("instance-1", &cancellation)
+                .await
+                .is_err()
+        );
+    }
 
     #[tokio::test]
     async fn serializes_concurrent_tasks_for_the_same_instance() {

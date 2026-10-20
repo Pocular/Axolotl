@@ -17,6 +17,9 @@ const version = tag.replace(/^v/, '')
 if (catalog.version !== version || release.tag_name !== tag) {
 	throw new Error('Release catalog metadata does not match the release tag')
 }
+if (!release.published_at) {
+	throw new Error(`GitHub release ${tag} must be published before notifying the Update Server`)
+}
 
 const payload = JSON.stringify({
 	event_id: `github-${tag}-${release.id ?? release.node_id ?? version}`,
@@ -26,8 +29,9 @@ const payload = JSON.stringify({
 	release: {
 		id: release.id,
 		tag_name: release.tag_name,
+		draft: release.draft,
 		body: release.body ?? '',
-		published_at: release.published_at ?? new Date().toISOString(),
+		published_at: release.published_at,
 		assets: release.assets,
 	},
 	catalog,

@@ -4,7 +4,8 @@ use std::path::PathBuf;
 use theseus::logs::LogType;
 use theseus::logs::{
     self, CensoredString, CrashAnalysis, CrashAnalysisAiExplanation,
-    CrashAnalysisAiSettings, LatestLogCursor, Logs,
+    CrashAnalysisAiSettings, LatestLogCursor, LogShareSettings,
+    LogShareUploadResponse, Logs, SharedLog,
 };
 
 /*
@@ -26,6 +27,7 @@ pub fn init<R: tauri::Runtime>() -> tauri::plugin::TauriPlugin<R> {
             logs_delete_logs,
             logs_delete_logs_by_filename,
             logs_get_latest_log_cursor,
+            logs_get_minecraft_latest_log_cursor,
             logs_get_live_log_buffer,
             logs_clear_live_log_buffer,
             logs_analyze_crash,
@@ -34,6 +36,17 @@ pub fn init<R: tauri::Runtime>() -> tauri::plugin::TauriPlugin<R> {
             logs_explain_crash_with_ai,
             logs_undo_added_mod,
             logs_export_crash_context,
+            logs_get_log_share_settings,
+            logs_update_log_share_settings,
+            logs_logshare_upload_crash,
+            logs_logshare_get_insights,
+            logs_logshare_analyse_crash_direct,
+            logs_logshare_ai_analyze_stored,
+            logs_logshare_ai_analyze_direct,
+            logs_logshare_delete,
+            logs_list_shared_logs,
+            logs_record_shared_log,
+            logs_delete_shared_log,
         ])
         .build()
 }
@@ -92,6 +105,18 @@ pub async fn logs_get_latest_log_cursor(
     cursor: u64, // 0 to start at beginning of file
 ) -> Result<LatestLogCursor> {
     Ok(logs::get_latest_log_cursor(instance_id, cursor).await?)
+}
+
+/// Get Minecraft's logs/latest.log from a cursor.
+#[tauri::command]
+pub async fn logs_get_minecraft_latest_log_cursor(
+    instance_id: &str,
+    cursor: u64, // 0 to start at beginning of file
+) -> Result<LatestLogCursor> {
+    Ok(
+        logs::get_generic_live_log_cursor(instance_id, "latest.log", cursor)
+            .await?,
+    )
 }
 
 /// Get all buffered live log lines for an instance.
@@ -171,4 +196,71 @@ pub async fn logs_export_crash_context(
     }
     writer.close().await.map_err(crate::api::utils::zip_error)?;
     Ok(())
+}
+
+#[tauri::command]
+pub async fn logs_get_log_share_settings() -> Result<LogShareSettings> {
+    Ok(logs::get_log_share_settings().await?)
+}
+
+#[tauri::command]
+pub async fn logs_update_log_share_settings(
+    settings: LogShareSettings,
+) -> Result<()> {
+    Ok(logs::update_log_share_settings(settings).await?)
+}
+
+#[tauri::command]
+pub async fn logs_logshare_upload_crash(
+    instance_id: &str,
+) -> Result<LogShareUploadResponse> {
+    Ok(logs::upload_crash(instance_id).await?)
+}
+
+#[tauri::command]
+pub async fn logs_logshare_get_insights(id: &str) -> Result<serde_json::Value> {
+    Ok(logs::get_insights(id).await?)
+}
+
+#[tauri::command]
+pub async fn logs_logshare_analyse_crash_direct(
+    instance_id: &str,
+) -> Result<serde_json::Value> {
+    Ok(logs::analyse_crash_direct(instance_id).await?)
+}
+
+#[tauri::command]
+pub async fn logs_logshare_ai_analyze_stored(
+    instance_id: &str,
+    id: &str,
+) -> Result<String> {
+    Ok(logs::ai_analyze_stored(instance_id, id).await?)
+}
+
+#[tauri::command]
+pub async fn logs_logshare_ai_analyze_direct(
+    instance_id: &str,
+) -> Result<String> {
+    Ok(logs::ai_analyze_direct(instance_id).await?)
+}
+
+#[tauri::command]
+pub async fn logs_logshare_delete(id: &str, token: &str) -> Result<()> {
+    logs::delete_log(id, token).await?;
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn logs_list_shared_logs() -> Result<Vec<SharedLog>> {
+    Ok(logs::list_shared_logs().await?)
+}
+
+#[tauri::command]
+pub async fn logs_record_shared_log(log: SharedLog) -> Result<()> {
+    Ok(logs::record_shared_log(log).await?)
+}
+
+#[tauri::command]
+pub async fn logs_delete_shared_log(id: String, token: String) -> Result<()> {
+    Ok(logs::delete_shared_log(id, token).await?)
 }

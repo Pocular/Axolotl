@@ -3,7 +3,7 @@ use crate::minecraft::{
 };
 use chrono::{DateTime, NaiveDateTime, Utc};
 use serde::{Deserialize, Deserializer, Serialize};
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 
 /// The latest version of the format the fabric model structs deserialize to
 pub const CURRENT_FABRIC_FORMAT_VERSION: usize = 1;
@@ -155,6 +155,28 @@ pub fn uses_unobfuscated_minecraft(game_version: &str) -> bool {
 }
 
 /// Removes loader libraries that are incompatible with the selected game version.
+///
+/// For Cleanroom the vanilla LWJGL 2 family is dropped: the
+/// `org.lwjgl.lwjgl:lwjgl` binding (shares the `org.lwjgl` package with the
+/// Cleanroom LWJGL 3 line), the natives-only carrier
+/// `org.lwjgl.lwjgl:lwjgl-platform` (whose root-level extracted `lwjgl.dll` /
+/// `liblwjgl.so` / `liblwjgl.dylib` would be what `System.loadLibrary("lwjgl")`
+/// resolves first in the natives directory, while the Cleanroom LWJGL 3
+/// natives are nested), and `org.lwjgl.lwjgl:lwjgl_util` at exactly
+/// `2.9.4-nightly-20150209` (LWJGL 2 utility classes the LWJGL 3 port does
+/// not provide; the version condition mirrors HMCL's `DefaultLauncher`
+/// Cleanroom handling, which removes every classpath entry containing
+/// `2.9.4-nightly-20150209`). HMCL itself never classpaths native jars and
+/// its first-wins native extraction over self-contained official Cleanroom
+/// manifests keeps the old LWJGL 2 native out of the natives directory, so
+/// dropping the carrier is an Axolotl-side strengthening for merged
+/// direct links, not an HMCL library rule. The vanilla JNA platform and the
+/// Mojang ICU bundle are removed by the pre-existing Axolotl Cleanroom rule
+/// (not HMCL logic): with Cleanroom's newer JNA line on the classpath the
+/// 1.12.2-era `net.java.dev.jna:platform` and `com.ibm.icu:icu4j-core-mojang`
+/// carry conflicting runtime-class versions. The Cleanroom LWJGL 3 line
+/// (`org.lwjgl:lwjgl:3.4.1-unsafe`), `lwjglxx`, and the vanilla JNA core are
+/// untouched.
 pub fn normalize_loader_libraries(
     loader: &str,
     game_version: &str,
@@ -172,19 +194,22 @@ pub fn normalize_loader_libraries(
         let mut coordinates = library.name.split(':');
         let group = coordinates.next();
         let artifact = coordinates.next();
-        let has_version = coordinates.next().is_some();
+        let version = coordinates.next();
+        let has_version = version.is_some();
         let is_intermediary = remove_fabric_intermediary
             && group == Some("net.fabricmc")
             && artifact == Some("intermediary")
             && has_version;
         let conflicts_with_cleanroom = remove_cleanroom_conflicts
             && has_version
-            && matches!(
+            && (matches!(
                 (group, artifact),
-                (Some("org.lwjgl.lwjgl"), Some("lwjgl"))
+                (Some("org.lwjgl.lwjgl"), Some("lwjgl" | "lwjgl-platform"))
                     | (Some("net.java.dev.jna"), Some("platform"))
                     | (Some("com.ibm.icu"), Some("icu4j-core-mojang"))
-            );
+            ) || (group == Some("org.lwjgl.lwjgl")
+                && artifact == Some("lwjgl_util")
+                && version == Some("2.9.4-nightly-20150209")));
 
         if is_intermediary || conflicts_with_cleanroom {
             removed.push(library.name.clone());
@@ -353,8 +378,47 @@ pub fn merge_partial_version(
             library
         })
         .collect::<Vec<_>>();
-    let mut seen_libraries = HashSet::new();
-    libraries.retain(|library| seen_libraries.insert(library.name.clone()));
+    // Loader profiles may repeat a vanilla coordinate with a reduced
+    // description (Forge 1.16.x is a notable example: its duplicate LWJGL
+    // entry omits `natives` and `downloads.classifiers`). Merge metadata from
+    // duplicates before dropping them so native archives remain discoverable.
+    let mut merged_libraries = Vec::with_capacity(libraries.len());
+    for library in libraries {
+        if let Some(existing) = merged_libraries
+            .iter_mut()
+            .find(|existing: &&mut Library| existing.name == library.name)
+        {
+            existing.include_in_classpath |= library.include_in_classpath;
+            if existing.natives.is_none() {
+                existing.natives = library.natives.clone();
+            }
+            if let Some(downloads) = &library.downloads {
+                let existing_downloads =
+                    existing.downloads.get_or_insert_with(|| downloads.clone());
+                if existing_downloads.artifact.is_none() {
+                    existing_downloads.artifact = downloads.artifact.clone();
+                }
+                if existing_downloads.classifiers.is_none() {
+                    existing_downloads.classifiers =
+                        downloads.classifiers.clone();
+                }
+            }
+            if existing.extract.is_none() {
+                existing.extract = library.extract.clone();
+            }
+        } else {
+            merged_libraries.push(library);
+        }
+    }
+    libraries = merged_libraries;
+
+    let minecraft_arguments =
+        match (merge.minecraft_arguments, partial.minecraft_arguments) {
+            (Some(base), Some(loader)) => {
+                Some(merge_legacy_arguments(&base, &loader))
+            }
+            (base, loader) => loader.or(base),
+        };
 
     VersionInfo {
         arguments,
@@ -370,16 +434,50 @@ pub fn merge_partial_version(
         } else {
             merge.main_class
         },
-        minecraft_arguments: partial
-            .minecraft_arguments
-            .or(merge.minecraft_arguments),
+        minecraft_arguments,
         minimum_launcher_version: merge.minimum_launcher_version,
-        release_time: partial.release_time,
-        time: partial.time,
+        release_time: merge.release_time,
+        time: merge.time,
         type_: partial.type_,
         data: partial.data,
         processors: partial.processors,
     }
+}
+
+fn merge_legacy_arguments(base: &str, loader: &str) -> String {
+    let base_tokens = base.split_whitespace().collect::<Vec<_>>();
+    let loader_tokens = loader.split_whitespace().collect::<Vec<_>>();
+    let base_pairs = argument_pairs(&base_tokens);
+    let loader_pairs = argument_pairs(&loader_tokens);
+    let mut merged = base_tokens.join(" ");
+    for (start, end) in loader_pairs {
+        let pair = &loader_tokens[start..end];
+        if !base_pairs.iter().any(|(base_start, base_end)| {
+            base_tokens[*base_start..*base_end] == *pair
+        }) {
+            if !merged.is_empty() {
+                merged.push(' ');
+            }
+            merged.push_str(&pair.join(" "));
+        }
+    }
+    merged
+}
+
+fn argument_pairs(tokens: &[&str]) -> Vec<(usize, usize)> {
+    let mut pairs = Vec::new();
+    let mut index = 0;
+    while index < tokens.len() {
+        let end = if tokens[index].starts_with('-') && index + 1 < tokens.len()
+        {
+            index + 2
+        } else {
+            index + 1
+        };
+        pairs.push((index, end));
+        index = end;
+    }
+    pairs
 }
 
 #[cfg(test)]
@@ -442,6 +540,11 @@ mod merge_tests {
     #[test]
     fn merge_partial_version_keeps_loader_order_and_removes_exact_duplicates() {
         let now = Utc::now();
+        let mut minecraft = version_info();
+        minecraft.release_time = "2017-09-18T08:39:46Z".parse().unwrap();
+        minecraft.time = "2021-12-15T15:04:05Z".parse().unwrap();
+        let release_time = minecraft.release_time;
+        let time = minecraft.time;
         let partial = PartialVersionInfo {
             id: "1.12.2-liteloader".to_string(),
             inherits_from: "1.12.2".to_string(),
@@ -467,7 +570,10 @@ mod merge_tests {
             processors: None,
         };
 
-        let merged = merge_partial_version(partial, version_info());
+        let merged = merge_partial_version(partial, minecraft);
+        assert_eq!(merged.release_time, release_time);
+        assert_eq!(merged.time, time);
+        assert_eq!(merged.id, "1.12.2-liteloader");
         assert_eq!(
             merged
                 .libraries
@@ -542,6 +648,55 @@ mod merge_tests {
                 })
                 .count(),
             2
+        );
+    }
+
+    #[test]
+    fn merge_partial_version_combines_legacy_game_arguments() {
+        let now = Utc::now();
+        let mut minecraft = version_info();
+        minecraft.minecraft_arguments = Some(
+            "--username ${auth_player_name} --version ${version_name} \
+             --versionType ${version_type}"
+                .split_whitespace()
+                .collect::<Vec<_>>()
+                .join(" "),
+        );
+        let partial = PartialVersionInfo {
+            id: "1.12.2-forge".to_string(),
+            inherits_from: "1.12.2".to_string(),
+            release_time: now,
+            time: now,
+            main_class: Some("net.minecraft.launchwrapper.Launch".to_string()),
+            minecraft_arguments: Some(
+                "--username ${auth_player_name} --version ${version_name} \
+                 --tweakClass net.minecraftforge.fml.common.launcher.FMLTweaker \
+                 --versionType Forge"
+                    .split_whitespace()
+                    .collect::<Vec<_>>()
+                    .join(" "),
+            ),
+            arguments: None,
+            libraries: Vec::new(),
+            java_version: None,
+            type_: VersionType::Release,
+            data: None,
+            processors: None,
+        };
+
+        let merged = merge_partial_version(partial, minecraft);
+        assert_eq!(
+            merged.minecraft_arguments.as_deref(),
+            Some(
+                "--username ${auth_player_name} --version ${version_name} \
+                 --versionType ${version_type} \
+                 --tweakClass net.minecraftforge.fml.common.launcher.FMLTweaker \
+                 --versionType Forge"
+                    .split_whitespace()
+                    .collect::<Vec<_>>()
+                    .join(" ")
+                    .as_str()
+            )
         );
     }
 }
@@ -755,10 +910,16 @@ mod tests {
     }
 
     #[test]
-    fn cleanroom_normalization_removes_legacy_runtime_conflicts() {
+    fn cleanroom_normalization_removes_lwjgl2_family_and_legacy_mojang_conflicts()
+     {
+        // The vanilla LWJGL 2 family (binding, util at 2.9.4-nightly-20150209,
+        // natives carrier at any version) plus the pre-existing Axolotl
+        // Cleanroom rule targets (vanilla JNA platform, Mojang ICU) are
+        // removed. The Cleanroom LWJGL 3 line, lwjglxx, the version-scoped
+        // lwjgl_util at other versions, and the Cleanroom JNA core stay.
         let retained = [
-            "org.lwjgl.lwjgl:lwjgl_util:2.9.4-nightly-20150209",
             "org.lwjgl:lwjgl:3.4.1-unsafe",
+            "org.lwjgl.lwjgl:lwjgl_util:2.9.2-nightly-20140822",
             "net.java.dev.jna:jna:5.19.1",
             "net.java.dev.jna:jna-platform:5.19.1",
             "com.ibm.icu:icu4j:78.3",
@@ -766,8 +927,11 @@ mod tests {
         ];
         let removed = [
             "org.lwjgl.lwjgl:lwjgl:2.9.4-nightly-20150209",
+            "org.lwjgl.lwjgl:lwjgl_util:2.9.4-nightly-20150209",
+            "org.lwjgl.lwjgl:lwjgl-platform:2.9.4-nightly-20150209",
             "net.java.dev.jna:platform:3.4.0",
             "com.ibm.icu:icu4j-core-mojang:51.2",
+            "org.lwjgl.lwjgl:lwjgl-platform:2.9.2-nightly-20140822",
         ];
         let mut libraries = removed
             .iter()
@@ -789,10 +953,55 @@ mod tests {
     }
 
     #[test]
+    fn cleanroom_normalization_matches_lwjgl2_coordinates_by_version_scope() {
+        // lwjgl and lwjgl-platform keep the pre-existing artifact match (any
+        // version); lwjgl_util only matches at 2.9.4-nightly-20150209,
+        // mirroring HMCL's classpath filter for Cleanroom. The LWJGL 3 line
+        // and lwjglxx never match.
+        let mut libraries = vec![
+            library("org.lwjgl.lwjgl:lwjgl:2.9.4-nightly-20150209"),
+            library("org.lwjgl.lwjgl:lwjgl_util:2.9.4-nightly-20150209"),
+            library("org.lwjgl.lwjgl:lwjgl-platform:2.9.4-nightly-20150209"),
+            library("org.lwjgl.lwjgl:lwjgl:2.9.2-nightly-20140822"),
+            library("org.lwjgl.lwjgl:lwjgl-platform:2.9.2-nightly-20140822"),
+            library("org.lwjgl.lwjgl:lwjgl_util:2.9.2-nightly-20140822"),
+            library("org.lwjgl:lwjgl:3.4.1-unsafe"),
+            library("org.lwjgl:lwjgl-platform:9.9.9"),
+            library("com.cleanroommc:lwjglxx:1.1.22"),
+        ];
+
+        assert_eq!(
+            normalize_loader_libraries("cleanroom", "1.12.2", &mut libraries),
+            [
+                "org.lwjgl.lwjgl:lwjgl:2.9.4-nightly-20150209",
+                "org.lwjgl.lwjgl:lwjgl_util:2.9.4-nightly-20150209",
+                "org.lwjgl.lwjgl:lwjgl-platform:2.9.4-nightly-20150209",
+                "org.lwjgl.lwjgl:lwjgl:2.9.2-nightly-20140822",
+                "org.lwjgl.lwjgl:lwjgl-platform:2.9.2-nightly-20140822",
+            ]
+        );
+        assert_eq!(
+            libraries
+                .iter()
+                .map(|library| library.name.as_str())
+                .collect::<Vec<_>>(),
+            [
+                "org.lwjgl.lwjgl:lwjgl_util:2.9.2-nightly-20140822",
+                "org.lwjgl:lwjgl:3.4.1-unsafe",
+                "org.lwjgl:lwjgl-platform:9.9.9",
+                "com.cleanroommc:lwjglxx:1.1.22",
+            ]
+        );
+    }
+
+    #[test]
     fn cleanroom_runtime_conflicts_remain_for_other_loaders() {
         for loader in ["vanilla", "forge", "fabric", "quilt", "neo"] {
             let mut libraries = vec![
                 library("org.lwjgl.lwjgl:lwjgl:2.9.4-nightly-20150209"),
+                library(
+                    "org.lwjgl.lwjgl:lwjgl-platform:2.9.4-nightly-20150209",
+                ),
                 library("net.java.dev.jna:platform:3.4.0"),
                 library("com.ibm.icu:icu4j-core-mojang:51.2"),
             ];
@@ -801,7 +1010,7 @@ mod tests {
                 normalize_loader_libraries(loader, "1.12.2", &mut libraries)
                     .is_empty()
             );
-            assert_eq!(libraries.len(), 3);
+            assert_eq!(libraries.len(), 4);
         }
     }
 

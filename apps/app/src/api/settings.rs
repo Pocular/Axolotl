@@ -7,18 +7,25 @@ pub fn init<R: tauri::Runtime>() -> tauri::plugin::TauriPlugin<R> {
     tauri::plugin::Builder::new("settings")
         .invoke_handler(tauri::generate_handler![
             settings_get,
-            settings_set,
+            settings_patch,
             privacy_get,
             privacy_set,
             telemetry_set,
             discord_rpc_set,
-            download_engine_set,
             cancel_directory_change,
             proxy_get,
             proxy_set,
             proxy_test
         ])
         .build()
+}
+
+pub(crate) fn log_level_for_channel(channel: &str, log_level: &str) -> String {
+    if channel == "beta" && !matches!(log_level, "debug" | "trace") {
+        "debug".to_string()
+    } else {
+        log_level.to_string()
+    }
 }
 
 // Get full settings
@@ -29,16 +36,47 @@ pub async fn settings_get() -> Result<Settings> {
     Ok(res)
 }
 
-// Set full settings
-// invoke('plugin:settings|settings_set', settings)
+/// Merges only the edited fields into current settings.
 #[tauri::command]
-pub async fn settings_set(
+pub async fn settings_patch(
     app: tauri::AppHandle<impl Runtime>,
-    settings: Settings,
-) -> Result<()> {
-    settings::set(settings).await?;
+    mut patch: serde_json::Value,
+) -> Result<Settings> {
+    let channel = crate::resolve_update_channel(&app).await?;
+    if let Some(log_level) =
+        patch.get("log_level").and_then(|value| value.as_str())
+    {
+        let log_level = log_level_for_channel(&channel, log_level);
+        patch["log_level"] = serde_json::Value::String(log_level);
+    }
+    let settings = settings::patch(patch).await?;
+    let log_level = settings.log_level.clone();
+    // Apply the log level right away so the new verbosity takes effect without
+    // a restart. Invalid values are rejected by the settings table itself.
+    if let Err(error) = theseus::set_log_level(&log_level) {
+        tracing::warn!("Keeping the previous log level: {error}");
+    }
     let _ = app.emit("settings", ());
-    Ok(())
+    Ok(settings)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::log_level_for_channel;
+
+    #[test]
+    fn beta_only_allows_verbose_log_levels() {
+        assert_eq!(log_level_for_channel("beta", "info"), "debug");
+        assert_eq!(log_level_for_channel("beta", "debug"), "debug");
+        assert_eq!(log_level_for_channel("beta", "trace"), "trace");
+    }
+
+    #[test]
+    fn release_preserves_the_selected_log_level() {
+        assert_eq!(log_level_for_channel("release", "error"), "error");
+        assert_eq!(log_level_for_channel("release", "info"), "info");
+        assert_eq!(log_level_for_channel("release", "trace"), "trace");
+    }
 }
 
 #[tauri::command]
@@ -59,14 +97,6 @@ pub async fn telemetry_set(enabled: bool) -> Result<PrivacySettings> {
 #[tauri::command]
 pub async fn discord_rpc_set(enabled: bool) -> Result<PrivacySettings> {
     Ok(settings::set_discord_rpc(enabled).await?)
-}
-
-#[tauri::command]
-pub async fn download_engine_set(
-    engine: settings::DownloadEngine,
-) -> Result<()> {
-    settings::set_download_engine(engine).await?;
-    Ok(())
 }
 
 #[tauri::command]

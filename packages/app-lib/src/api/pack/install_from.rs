@@ -14,14 +14,14 @@ use crate::state::{
 use crate::util::fetch::{
     ContentValidation, DownloadMeta, DownloadReason, DownloadRequest,
     FetchProgressFn, Integrity, ResourceClass, download_to_path, fetch,
-    sha1_file_async, write_cached_icon,
+    write_cached_icon,
 };
 use path_util::SafeRelativeUtf8UnixPathBuf;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::future::Future;
 
-use std::path::{Component, Path, PathBuf};
+use std::path::{Path, PathBuf};
 use std::pin::Pin;
 
 use zip::ZipArchive;
@@ -169,9 +169,6 @@ pub struct CreatePack {
     pub description: CreatePackDescription,
 }
 
-// The hash lookup only gates the unknown-pack warning, so avoid a long blocking scan for huge local packs.
-const MAX_LOCAL_FILE_HASH_LOOKUP_SIZE: u64 = 1024 * 1024 * 1024;
-
 #[derive(Clone, Debug)]
 pub struct CreatePackDescription {
     pub icon: Option<PathBuf>,
@@ -218,37 +215,26 @@ pub async fn get_instance_from_pack(
                 ))
             })?;
 
+            // CurseForge archives carry authoritative identity metadata in
+            // manifest.json. Read it before instance creation so we do not
+            // briefly create a 1.19.4/Vanilla instance.
+            if let Ok((pack_name, target)) =
+                crate::api::curseforge::get_local_modpack_target(&path).await
+            {
+                return Ok(CreatePackInstance {
+                    name: pack_name,
+                    game_version: target.game_version,
+                    modloader: target.loader,
+                    loader_version: target.loader_version,
+                    unknown_file: false,
+                    ..Default::default()
+                });
+            }
+
             // Scan ZIP entry names to detect pack format (no extraction, just
             // reads the central directory). This tells us what kind of content
             // we're dealing with before any expensive operations.
-            let _has_known_manifest = detect_local_pack_sync(&path).is_ok();
-
-            let is_known_file = if tokio::fs::metadata(&path).await?.len()
-                <= MAX_LOCAL_FILE_HASH_LOOKUP_SIZE
-            {
-                let state = State::get().await?;
-                let (_, hash) = sha1_file_async(&path).await?;
-                match CachedEntry::get_file_many(
-                    &[&hash],
-                    Some(CacheBehaviour::StaleWhileRevalidateSkipOffline),
-                    &state.pool,
-                    &state.api_semaphore,
-                )
-                .await
-                {
-                    Ok(files) => !files.is_empty(),
-                    Err(err) => {
-                        tracing::warn!(
-                            "Failed to check Modrinth file hash for {}: {}",
-                            path.display(),
-                            err
-                        );
-                        false
-                    }
-                }
-            } else {
-                false
-            };
+            let is_known_file = detect_local_pack_sync(&path).is_ok();
 
             Ok(CreatePackInstance {
                 name: file_name,
@@ -322,23 +308,13 @@ pub(crate) async fn generate_pack_from_version_id_with_reporter(
                 "Specified version has no files".to_string(),
             )
         })?;
-    let file_name = Path::new(&pack_file.filename);
-    if file_name.components().count() != 1
-        || !matches!(file_name.components().next(), Some(Component::Normal(_)))
-    {
-        return Err(crate::ErrorKind::InputError(
-            "Modrinth returned an invalid modpack file name".to_string(),
-        )
-        .into());
-    }
     let hash = pack_file.hashes.get("sha1");
-    let pack_path = state
-        .directories
-        .caches_dir()
-        .join("modpacks")
-        .join(&project_id)
-        .join(&version_id)
-        .join(file_name);
+    let pack_path = modpack_cache_path(
+        &state.directories.caches_dir().join("modpacks"),
+        &project_id,
+        &version_id,
+        &pack_file.filename,
+    )?;
 
     let metadata =
         crate::api::instance::get(&instance_id)
@@ -537,8 +513,70 @@ pub(crate) async fn generate_pack_from_version_id_with_reporter(
     })
 }
 
-#[tracing::instrument]
+fn modpack_cache_path(
+    root: &Path,
+    project_id: &str,
+    version_id: &str,
+    filename: &str,
+) -> crate::Result<PathBuf> {
+    let mut path = root.to_path_buf();
+    for segment in [project_id, version_id, filename] {
+        if segment.contains('/') {
+            return Err(crate::ErrorKind::InputError(
+                "Invalid modpack cache path component".to_string(),
+            )
+            .into());
+        }
+        path = crate::util::io::safe_relative_join(&path, segment)?;
+    }
+    Ok(path)
+}
 
+#[cfg(test)]
+mod cache_path_tests {
+    use super::modpack_cache_path;
+    use std::path::Path;
+
+    #[test]
+    fn cache_components_cannot_escape_their_directories() {
+        let root = Path::new("modpacks");
+        assert_eq!(
+            modpack_cache_path(root, "project", "version", "pack.mrpack")
+                .unwrap(),
+            root.join("project/version/pack.mrpack")
+        );
+        for malicious in [
+            "../outside",
+            "nested/name",
+            r"..\outside",
+            "C:/outside",
+            "C:outside",
+            r"\\server\share",
+            ".",
+            "",
+            "NUL",
+            "pack.mrpack:stream",
+            ".. ",
+        ] {
+            for position in 0..3 {
+                let mut components = ["project", "version", "pack.mrpack"];
+                components[position] = malicious;
+                assert!(
+                    modpack_cache_path(
+                        root,
+                        components[0],
+                        components[1],
+                        components[2]
+                    )
+                    .is_err(),
+                    "{position}: {malicious:?}"
+                );
+            }
+        }
+    }
+}
+
+#[tracing::instrument]
 pub async fn generate_pack_from_file(
     path: PathBuf,
     instance_id: String,

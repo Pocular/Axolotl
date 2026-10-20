@@ -1,7 +1,7 @@
 use super::sync_content_files::{
     fetch_content_file_updates, installed_modrinth_version_id,
-    modrinth_update_enabled, project_type_for_file,
-    sync_instance_content_files,
+    instance_content_root, join_content_path, modrinth_update_enabled,
+    project_type_for_file, sync_instance_content_files,
 };
 use crate::State;
 use crate::pack::install_from::{PackFileHash, PackFormat};
@@ -145,16 +145,7 @@ pub(crate) async fn get_installed_project_ids_for_instance(
         &state.pool,
     )
     .await?;
-    let projects =
-        get_content_projects(instance_id, content_set_id, None, state).await?;
-
-    let mut project_ids = projects
-        .into_iter()
-        .filter_map(|(_, file)| {
-            file.modrinth
-                .map(|metadata| metadata.project_id.to_string())
-        })
-        .collect::<HashSet<_>>();
+    let mut project_ids = HashSet::new();
     let provider_rows = sqlx::query(
         "SELECT DISTINCT ref.provider, ref.provider_project_id
          FROM instance_content_entries entry
@@ -375,6 +366,37 @@ pub(crate) async fn list_all_content(
             .await?;
     let files = content_projects_for_scope(
         &resolved,
+        cache_behaviour,
+        state,
+        ContentFilter::All,
+        refresh_file_updates,
+    )
+    .await?
+    .into_iter()
+    .collect::<Vec<_>>();
+
+    content_files_to_content_items(
+        &resolved.instance,
+        &files,
+        cache_behaviour,
+        state,
+    )
+    .await
+}
+
+pub(crate) async fn list_all_content_from_files(
+    instance_id: &str,
+    files: Vec<InstanceFile>,
+    cache_behaviour: Option<CacheBehaviour>,
+    refresh_file_updates: bool,
+    state: &State,
+) -> crate::Result<Vec<ContentItem>> {
+    let resolved =
+        resolve_content_scope_with_instance(instance_id, None, &state.pool)
+            .await?;
+    let files = content_projects_for_files(
+        &resolved,
+        files,
         cache_behaviour,
         state,
         ContentFilter::All,
@@ -1797,10 +1819,10 @@ async fn content_files_to_content_items(
         &state.api_semaphore,
     )
     .await?;
-    let instance_path = state.directories.instance_game_dir(&instance);
+    let instance_path = instance_content_root(&state.directories, instance)?;
     let paths = files
         .iter()
-        .map(|(path, _)| instance_path.join(path))
+        .map(|(path, _)| join_content_path(&instance_path, path))
         .collect::<Vec<_>>();
     let modification_times: Vec<Option<String>> =
         tokio::task::spawn_blocking(move || {
@@ -1818,6 +1840,9 @@ async fn content_files_to_content_items(
                 .collect()
         })
         .await?;
+    // Backups are read from the resolved root: the linked installation for
+    // directly associated instances, the `game_dir_override` target (or the
+    // profile directory) otherwise.
     let content_backups =
         crate::state::instances::adapters::filesystem::scan_content_backups_from(
             &instance_path,
@@ -2871,6 +2896,93 @@ mod tests {
             "vanilla",
             &[],
         ));
+    }
+
+    #[tokio::test]
+    async fn installed_ids_use_local_refs_without_hash_or_remote_metadata() {
+        let (_temp, state, resolved) = reconciliation_fixture().await;
+        for (id, enabled, missing, provider_ref) in [
+            (
+                "modrinth",
+                true,
+                false,
+                ContentProviderRef::Modrinth {
+                    project_id: crate::state::ModrinthProjectId::new(
+                        "projectA",
+                    )
+                    .unwrap(),
+                    version_id: Some(
+                        crate::state::ModrinthVersionId::new("versionA")
+                            .unwrap(),
+                    ),
+                },
+            ),
+            (
+                "disabled",
+                false,
+                false,
+                ContentProviderRef::CurseForge {
+                    project_id: crate::state::CurseForgeProjectId::new(123)
+                        .unwrap(),
+                    file_id: Some(
+                        crate::state::CurseForgeFileId::new(456).unwrap(),
+                    ),
+                },
+            ),
+            (
+                "missing",
+                true,
+                true,
+                ContentProviderRef::Modrinth {
+                    project_id: crate::state::ModrinthProjectId::new(
+                        "projectB",
+                    )
+                    .unwrap(),
+                    version_id: None,
+                },
+            ),
+        ] {
+            let file = insert_test_file(
+                &resolved,
+                &state,
+                id,
+                &format!("mods/{id}.jar"),
+                "hash",
+                enabled,
+            )
+            .await;
+            let entry =
+                insert_test_entry(&resolved, &state, &file, enabled).await;
+            let mut tx = state.pool.begin().await.unwrap();
+            sqlite::content_rows::upsert_content_provider_ref_in_transaction(
+                &entry.id,
+                &provider_ref,
+                true,
+                &mut tx,
+            )
+            .await
+            .unwrap();
+            sqlx::query("UPDATE instance_files SET missing = ? WHERE id = ?")
+                .bind(missing)
+                .bind(&file.id)
+                .execute(&mut *tx)
+                .await
+                .unwrap();
+            tx.commit().await.unwrap();
+        }
+        let mut ids = tokio::time::timeout(
+            std::time::Duration::from_secs(2),
+            get_installed_project_ids_for_instance(
+                &resolved.instance.id,
+                None,
+                &state,
+            ),
+        )
+        .await
+        .expect("installed IDs must not wait for remote metadata")
+        .unwrap();
+        ids.sort();
+        assert_eq!(ids, ["curseforge:123", "projectA"]);
     }
 
     #[test]

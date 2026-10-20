@@ -60,6 +60,34 @@ pub(crate) fn io_error_with_lock_info(
     io_error_with_lock_info_for_paths(source, path, &[path])
 }
 
+/// Joins an untrusted Unix-style relative file path, rejecting traversal and
+/// Windows aliases on every platform. This is a lexical check, not a symlink
+/// sandbox.
+pub(crate) fn safe_relative_join(
+    root: &Path,
+    relative: &str,
+) -> crate::Result<PathBuf> {
+    path_util::SafeRelativeUtf8UnixPathBuf::try_from(relative.to_string())
+        .map_err(|error| {
+            crate::ErrorKind::InputError(format!(
+                "Invalid file path {relative}: {error}"
+            ))
+        })?;
+    if relative.split('/').any(|segment| {
+        segment.is_empty()
+            || segment == "."
+            || segment.ends_with(['.', ' '])
+            || segment.contains(':')
+            || segment.chars().any(char::is_control)
+    }) {
+        return Err(crate::ErrorKind::InputError(format!(
+            "Invalid file path: {relative}"
+        ))
+        .into());
+    }
+    Ok(root.join(relative))
+}
+
 /// Join a user-provided relative path onto `root`, rejecting traversal.
 pub(crate) fn join_within_root(
     root: &Path,
@@ -95,7 +123,7 @@ pub(crate) fn join_within_root(
         )
         .into());
     }
-    Ok(root.join(safe))
+    safe_relative_join(root, &safe.to_string_lossy().replace('\\', "/"))
 }
 
 pub(crate) fn io_error_with_lock_info_for_paths(
@@ -538,6 +566,10 @@ async fn move_recursive(from: &Path, to: &Path) -> Result<()> {
             })?;
     }
 
+    remove_dir(from)
+        .await
+        .wrap_err_with(|| eyre!("removing source dir {from:?}"))?;
+
     Ok(())
 }
 
@@ -545,26 +577,30 @@ pub async fn copy(
     from: impl AsRef<std::path::Path>,
     to: impl AsRef<std::path::Path>,
 ) -> Result<u64, IOError> {
-    let from: &Path = from.as_ref();
-    let to = to.as_ref();
+    let from = from.as_ref().to_path_buf();
+    let to = to.as_ref().to_path_buf();
 
     // Never follow symlinks / reparse points — recreate the link at the
     // destination instead of copying the target's content.
-    let meta = tokio::fs::symlink_metadata(from)
+    let meta = tokio::fs::symlink_metadata(&from)
         .await
-        .map_err(|e| io_error_with_lock_info(e, from))?;
+        .map_err(|e| io_error_with_lock_info(e, &from))?;
 
     if is_symlink_or_reparse(&meta) {
-        let target = tokio::fs::read_link(from)
+        let target = tokio::fs::read_link(&from)
             .await
-            .map_err(|e| io_error_with_lock_info(e, from))?;
-        create_symlink(&target, to).await?;
+            .map_err(|e| io_error_with_lock_info(e, &from))?;
+        create_symlink(&target, &to).await?;
         return Ok(0);
     }
 
-    tokio::fs::copy(from, to)
-        .await
-        .map_err(|e| io_error_with_lock_info(e, from))
+    retry_windows_sharing_violation(&to, "copying", || {
+        let from = from.clone();
+        let to = to.clone();
+        async move { tokio::fs::copy(from, to).await }
+    })
+    .await
+    .map_err(|e| io_error_with_lock_info(e, &from))
 }
 
 /// Recursively copy a directory from `from` to `to`.
@@ -888,6 +924,39 @@ mod windows_sharing_violation_tests {
 
         assert_eq!(error.raw_os_error(), Some(32));
         assert_eq!(attempts.load(Ordering::SeqCst), 3);
+    }
+}
+
+#[cfg(test)]
+mod path_join_tests {
+    use super::*;
+
+    #[test]
+    fn join_within_root_uses_portable_path_validation() {
+        let root = Path::new("root");
+        assert_eq!(
+            join_within_root(root, r"config\example.toml").unwrap(),
+            root.join("config/example.toml")
+        );
+        assert_eq!(
+            join_within_root(root, "./config/./example.toml").unwrap(),
+            root.join("config/example.toml")
+        );
+        for relative in [
+            "../outside",
+            r"..\outside",
+            "/outside",
+            "C:/outside",
+            "C:outside",
+            r"\\server\share",
+            "config/.. /outside",
+            "config/file:stream",
+            "config/NUL",
+            "config/file.",
+            "config/file\0",
+        ] {
+            assert!(join_within_root(root, relative).is_err(), "{relative:?}");
+        }
     }
 }
 

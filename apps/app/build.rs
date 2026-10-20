@@ -16,12 +16,82 @@ fn run_command(command: &mut Command, description: &str) {
     );
 }
 
+fn newest_mtime(path: &std::path::Path) -> Option<std::time::SystemTime> {
+    let mut newest: Option<std::time::SystemTime> = None;
+    if path.is_file() {
+        return path.metadata().and_then(|m| m.modified()).ok();
+    }
+    if path.is_dir()
+        && let Ok(entries) = std::fs::read_dir(path)
+    {
+        for entry in entries.flatten() {
+            if let Some(time) = newest_mtime(&entry.path()) {
+                newest = Some(newest.map_or(time, |current| current.max(time)));
+            }
+        }
+    }
+    newest
+}
+
+fn blockbench_skin_is_fresh(
+    blockbench_dir: &std::path::Path,
+    synced_bundle: &std::path::Path,
+) -> bool {
+    let bundle = blockbench_dir.join("dist/skin.bundle.js");
+    let Ok(bundle_time) = bundle.metadata().and_then(|m| m.modified()) else {
+        return false;
+    };
+    let Ok(synced_time) = synced_bundle.metadata().and_then(|m| m.modified())
+    else {
+        return false;
+    };
+    if synced_time < bundle_time {
+        return false;
+    }
+
+    // Inputs that feed `npm run build-skin` or the resource sync. node_modules
+    // is intentionally excluded: it is huge and its mtimes churn independently
+    // of Blockbench sources.
+    let input_paths = [
+        blockbench_dir.join("package.json"),
+        blockbench_dir.join("package-lock.json"),
+        blockbench_dir.join("build.js"),
+        blockbench_dir.join("js"),
+        blockbench_dir.join("css"),
+        blockbench_dir.join("assets"),
+        blockbench_dir.join("font"),
+        blockbench_dir.join("index.html"),
+    ];
+    input_paths.iter().all(|input| {
+        newest_mtime(input)
+            .map(|input_time| input_time <= bundle_time)
+            .unwrap_or(true)
+    })
+}
+
 fn build_blockbench_skin_editor() {
+    if std::env::var_os("AXOLOTL_SKIP_BLOCKBENCH_BUILD").is_some_and(|value| {
+        !value.is_empty() && value != "0" && value != "false"
+    }) {
+        println!(
+            "cargo:warning=AXOLOTL_SKIP_BLOCKBENCH_BUILD set; skipping Blockbench skin editor build"
+        );
+        return;
+    }
+
     let blockbench_dir = std::path::Path::new("../../third-party/blockbench");
     assert!(
         blockbench_dir.join("package.json").is_file(),
         "Blockbench skin editor submodule is missing. Run git submodule update --init --recursive."
     );
+
+    let synced_bundle = std::path::Path::new(
+        "resources/blockbench-skin/dist/skin.bundle.js.gz",
+    );
+    if blockbench_skin_is_fresh(blockbench_dir, synced_bundle) {
+        return;
+    }
+
     if !blockbench_dir.join("node_modules").is_dir() {
         run_command(
             Command::new(NPM_COMMAND)
@@ -53,7 +123,20 @@ fn main() {
     println!("cargo:rerun-if-changed=tauri.linux.conf.json");
     println!("cargo:rerun-if-changed=tauri-modern.conf.json");
     println!("cargo:rerun-if-changed=tauri-release.conf.json");
-    println!("cargo:rerun-if-changed=../../third-party/blockbench");
+    // Watch Blockbench inputs only. Watching the whole submodule (including
+    // node_modules) made any npm install churn re-run the entire build script.
+    println!(
+        "cargo:rerun-if-changed=../../third-party/blockbench/package.json"
+    );
+    println!(
+        "cargo:rerun-if-changed=../../third-party/blockbench/package-lock.json"
+    );
+    println!("cargo:rerun-if-changed=../../third-party/blockbench/build.js");
+    println!("cargo:rerun-if-changed=../../third-party/blockbench/js");
+    println!("cargo:rerun-if-changed=../../third-party/blockbench/css");
+    println!("cargo:rerun-if-changed=../../third-party/blockbench/assets");
+    println!("cargo:rerun-if-changed=../../third-party/blockbench/font");
+    println!("cargo:rerun-if-changed=../../third-party/blockbench/index.html");
     // Tauri validates frontendDist during Cargo metadata/check builds. The
     // frontend build runs in parallel in CI, so create the directory before
     // tauri-build reads the configuration. A real frontend build overwrites
@@ -85,8 +168,11 @@ fn main() {
     println!("cargo:rerun-if-changed=src/seed_map/cubiomes_bridge.c");
     println!("cargo:rerun-if-changed=src/seed_map/cubiomes_bridge.h");
     println!("cargo:rerun-if-changed=vendor/cubiomes");
-    #[cfg(not(target_os = "windows"))]
-    println!("cargo:rustc-link-lib=m");
+    // Build scripts run for the host, so use Cargo's target metadata rather
+    // than `cfg(target_os = ...)` when deciding whether libm is needed.
+    if std::env::var("CARGO_CFG_TARGET_OS").as_deref() != Ok("windows") {
+        println!("cargo:rustc-link-lib=m");
+    }
 
     // Sadly, there is no better way to do it right now
     // You could try parsing source code here and detecting #[tauri::command]
@@ -102,7 +188,11 @@ fn main() {
                         "check_reachable",
                         "check_mojang_services",
                         "set_mojang_auth_use_mirror",
+                        "mojang_auth_use_mirror",
                         "login",
+                        "browser_login",
+                        "begin_device_login",
+                        "poll_device_login",
                         "begin_yggdrasil_login",
                         "finish_yggdrasil_login",
                         "list_yggdrasil_saved_logins",
@@ -114,6 +204,8 @@ fn main() {
                         "get_default_user",
                         "set_default_user",
                         "get_users",
+                        "get_anti_piracy_status",
+                        "clear_official_login_marker",
                     ])
                     .default_permission(
                         DefaultPermissionRule::AllowAllCommands,
@@ -196,6 +288,7 @@ fn main() {
                         "curseforge_get_projects",
                         "curseforge_get_description",
                         "curseforge_get_files",
+                        "curseforge_get_files_page",
                         "curseforge_get_file",
                         "curseforge_get_files_many",
                         "curseforge_get_changelog",
@@ -283,6 +376,7 @@ fn main() {
                         "logs_delete_logs",
                         "logs_delete_logs_by_filename",
                         "logs_get_latest_log_cursor",
+                        "logs_get_minecraft_latest_log_cursor",
                         "logs_get_live_log_buffer",
                         "logs_clear_live_log_buffer",
                         "logs_analyze_crash",
@@ -291,6 +385,17 @@ fn main() {
                         "logs_explain_crash_with_ai",
                         "logs_undo_added_mod",
                         "logs_export_crash_context",
+                        "logs_get_log_share_settings",
+                        "logs_update_log_share_settings",
+                        "logs_logshare_upload_crash",
+                        "logs_logshare_get_insights",
+                        "logs_logshare_analyse_crash_direct",
+                        "logs_logshare_ai_analyze_stored",
+                        "logs_logshare_ai_analyze_direct",
+                        "logs_logshare_delete",
+                        "logs_list_shared_logs",
+                        "logs_record_shared_log",
+                        "logs_delete_shared_log",
                     ])
                     .default_permission(
                         DefaultPermissionRule::AllowAllCommands,
@@ -410,6 +515,23 @@ fn main() {
                 InlinedPlugin::new()
                     .commands(&[
                         "instance_remove",
+                        "instance_get_backup_repository_status",
+                        "instance_move_backup_repository",
+                        "instance_get_backup_config",
+                        "instance_normalize_backup_exclusion",
+                        "instance_enable_backups",
+                        "instance_update_backup_exclusions",
+                        "instance_disable_backups",
+                        "instance_start_backup",
+                        "instance_cancel_backup",
+                        "instance_list_backup_operations",
+                        "instance_list_backups",
+                        "instance_delete_backup",
+                        "instance_get_backup_restore_preview",
+                        "instance_restore_backup",
+                        "instance_get_backup_delete_summary",
+                        "instance_create_direct_link",
+                        "instance_sync_direct_links",
                         "instance_get",
                         "instance_get_many",
                         "instance_get_projects",
@@ -464,6 +586,7 @@ fn main() {
                         "instance_preview_project_with_dependencies",
                         "instance_preview_project_with_dependencies_for_target",
                         "instance_queue_project_with_dependencies",
+                        "instance_queue_content_batch",
                         "instance_queue_curseforge_content",
                         "instance_queue_curseforge_world",
                         "instance_switch_project_version_with_dependencies",
@@ -477,8 +600,7 @@ fn main() {
                         "instance_rollback_project",
                         "instance_remove_project",
                         "instance_remove_content_entry",
-                        "instance_update_content_entry",
-                        "instance_switch_content_entry_version",
+                        "instance_queue_content_change",
                         "instance_restore_pack_member_default",
                         "instance_update_managed_modrinth_version",
                         "instance_repair_managed_modrinth",
@@ -489,6 +611,54 @@ fn main() {
                         "instance_edit_icon",
                         "instance_export_mrpack",
                         "instance_get_pack_export_candidates",
+                        "instance_list_screenshots",
+                        "instance_list_all_screenshots",
+                        "instance_list_synced_screenshots",
+                        "instance_save_edited_screenshot",
+                        "instance_list_screenshot_groups",
+                        "instance_create_screenshot_group",
+                        "instance_rename_screenshot_group",
+                        "instance_delete_screenshot_group",
+                        "instance_set_screenshot_group_memberships",
+                        "instance_import_screenshot_groups",
+                        "instance_delete_screenshots",
+                        "instance_export_screenshots",
+                        "instance_move_screenshots",
+                        "instance_open_screenshot",
+                        "instance_get_synced_options",
+                        "instance_get_initialized_synced_options",
+                        "instance_get_synced_options_overview",
+                        "instance_get_synced_option_capabilities",
+                        "instance_get_synced_option_join_preview",
+                        "instance_set_synced_option",
+                        "instance_set_instance_synced_option",
+                        "instance_get_synced_command_history",
+                        "instance_set_synced_command_history",
+                        "instance_list_synced_servers",
+                        "instance_update_synced_server",
+                        "instance_remove_synced_server",
+                        "instance_get_synced_game_options_config",
+                        "instance_preview_synced_game_option_changes",
+                        "instance_save_synced_game_option_changes",
+                        "instance_list_game_options_sync_sources",
+                        "instance_get_game_setting_locale_labels",
+                        "instance_get_local_game_options_config",
+                        "instance_preview_local_game_option_changes",
+                        "instance_save_local_game_option_changes",
+                        "instance_get_pack_sync_preview",
+                        "instance_sync_pack",
+                        "instance_desync_pack",
+                        "instance_list_synced_packs",
+                        "instance_upload_synced_pack",
+                        "instance_set_synced_pack_enabled",
+                        "instance_remove_synced_pack",
+                        "instance_list_groups",
+                        "instance_create_group",
+                        "instance_rename_group",
+                        "instance_delete_group",
+                        "instance_set_group_order",
+                        "instance_set_group_memberships",
+                        "instance_update_group_memberships",
                     ])
                     .default_permission(
                         DefaultPermissionRule::AllowAllCommands,
@@ -499,12 +669,11 @@ fn main() {
                 InlinedPlugin::new()
                     .commands(&[
                         "settings_get",
-                        "settings_set",
+                        "settings_patch",
                         "privacy_get",
                         "privacy_set",
                         "telemetry_set",
                         "discord_rpc_set",
-                        "download_engine_set",
                         "cancel_directory_change",
                         "proxy_get",
                         "proxy_set",
@@ -621,6 +790,7 @@ fn main() {
                         "open_path",
                         "show_launcher_logs_folder",
                         "export_error_logs",
+                        "export_launcher_logs",
                         "show_app_db_backups_folder",
                         "progress_bars_list",
                         "get_opening_command",
@@ -634,6 +804,14 @@ fn main() {
                 "storage",
                 InlinedPlugin::new()
                     .commands(&["storage_scan_start", "storage_open_paths"])
+                    .default_permission(
+                        DefaultPermissionRule::AllowAllCommands,
+                    ),
+            )
+            .plugin(
+                "system-accent",
+                InlinedPlugin::new()
+                    .commands(&["system_accent_color"])
                     .default_permission(
                         DefaultPermissionRule::AllowAllCommands,
                     ),
@@ -658,6 +836,14 @@ fn main() {
                     ),
             )
             .plugin(
+                "fonts",
+                InlinedPlugin::new()
+                    .commands(&["fonts_get_system_fonts"])
+                    .default_permission(
+                        DefaultPermissionRule::AllowAllCommands,
+                    ),
+            )
+            .plugin(
                 "drop",
                 InlinedPlugin::new()
                     .commands(&[
@@ -665,6 +851,7 @@ fn main() {
                         "drop_classify_extract",
                         "drop_extract_zip_to_temp",
                         "drop_scan_launcher_instances",
+                        "drop_resolve_gamedirs",
                         "drop_remove_temp_dir",
                         "drop_detect_file_lock",
                         "drop_extract_mod_metadata",
@@ -753,6 +940,9 @@ fn main() {
                         "servers_create",
                         "servers_update_settings",
                         "servers_set_icon",
+                        "servers_set_linked_world",
+                        "servers_is_local_address",
+                        "servers_wait_until_ready",
                         "servers_delete",
                         "servers_read_file",
                         "servers_write_file",
@@ -761,6 +951,8 @@ fn main() {
                         "servers_install_modpack",
                         "servers_start",
                         "servers_send_command",
+                        "servers_send_console_input",
+                        "servers_resize_console",
                         "servers_stop",
                         "servers_kill",
                         "servers_kill_port_process",
@@ -768,6 +960,27 @@ fn main() {
                         "servers_get_log_buffer",
                         "servers_clear_log",
                     ])
+                    .default_permission(
+                        DefaultPermissionRule::AllowAllCommands,
+                    ),
+            )
+            .plugin(
+                "friends",
+                InlinedPlugin::new()
+                    .commands(&[
+                        "friends",
+                        "friend_statuses",
+                        "add_friend",
+                        "remove_friend",
+                    ])
+                    .default_permission(
+                        DefaultPermissionRule::AllowAllCommands,
+                    ),
+            )
+            .plugin(
+                "telemetry",
+                InlinedPlugin::new()
+                    .commands(&["notify_online"])
                     .default_permission(
                         DefaultPermissionRule::AllowAllCommands,
                     ),

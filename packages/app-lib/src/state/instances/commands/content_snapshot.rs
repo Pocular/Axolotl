@@ -2,7 +2,7 @@ use std::collections::{HashMap, HashSet};
 
 use sqlx::Row;
 
-use super::list_content::list_all_content;
+use super::list_content::list_all_content_from_files;
 use super::sync_content_files::{
     project_type_for_file, sync_instance_content_files,
 };
@@ -30,6 +30,22 @@ pub(crate) async fn get_content_snapshot(
     refresh_remote: bool,
     state: &State,
 ) -> crate::Result<InstanceContentSnapshot> {
+    get_content_snapshot_inner(instance_id, refresh_remote, true, state).await
+}
+
+pub(crate) async fn get_cached_content_snapshot(
+    instance_id: &str,
+    state: &State,
+) -> crate::Result<InstanceContentSnapshot> {
+    get_content_snapshot_inner(instance_id, false, false, state).await
+}
+
+async fn get_content_snapshot_inner(
+    instance_id: &str,
+    refresh_remote: bool,
+    sync_direct_instance: bool,
+    state: &State,
+) -> crate::Result<InstanceContentSnapshot> {
     let instance = instance_rows::get_instance_by_id(instance_id, &state.pool)
         .await?
         .ok_or_else(|| {
@@ -45,15 +61,21 @@ pub(crate) async fn get_content_snapshot(
             })?;
     let link =
         instance_rows::get_instance_link(instance_id, &state.pool).await?;
-    // Opening the content page must be a database read. A full file-system
-    // reconciliation hashes and upserts every file, which is prohibitively
-    // expensive for large modpacks and unnecessary after launcher-owned
-    // mutations. Explicit refreshes and external file-change events use the
-    // remote refresh path below.
-    let files = if refresh_remote {
+    // Managed instances keep their cached database snapshot on first open.
+    // Directly associated instances have no install pipeline to seed that
+    // snapshot, so their first content-page load must scan the external game
+    // directory. Later loads reuse the populated rows unless explicitly
+    // refreshed.
+    let cached_files =
+        content_rows::get_instance_files(&instance.id, &state.pool).await?;
+    let files = if refresh_remote
+        || (sync_direct_instance
+            && instance.is_direct_linked()
+            && cached_files.is_empty())
+    {
         sync_instance_content_files(&instance, state).await?
     } else {
-        content_rows::get_instance_files(&instance.id, &state.pool).await?
+        cached_files
     };
     let mut warnings = Vec::new();
     if refresh_remote
@@ -236,6 +258,7 @@ pub(crate) async fn get_content_snapshot(
     }
     let mut represented_members = HashSet::new();
     let mut items = Vec::new();
+    let files_for_listing = files.clone();
 
     for file in files.into_iter().filter(|file| !file.missing) {
         let Some(project_type) = project_type_for_file(&file) else {
@@ -460,8 +483,9 @@ pub(crate) async fn get_content_snapshot(
     } else {
         CacheBehaviour::CacheOnly
     };
-    match list_all_content(
+    match list_all_content_from_files(
         instance_id,
+        files_for_listing,
         Some(cache_behaviour),
         refresh_remote,
         state,

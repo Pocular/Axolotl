@@ -2,6 +2,60 @@
   "app.account.signed-in-as": {
     "message": "Signed in as"
   },
+  "app.action-bar.active-backups": {
+    "message": "Active backups"
+  },
+  "app.action-bar.announcements": {
+    "message": "Announcements"
+  },
+  "app.action-bar.backup": {
+    "message": "Backing up"
+  },
+  "app.action-bar.backup-stage": {
+    "message": "{stage}"
+  },
+  "app.action-bar.backup-stage.applying": {
+    "message": "Applying files"
+  },
+  "app.action-bar.backup-stage.hashing": {
+    "message": "Calculating hashes"
+  },
+  "app.action-bar.backup-stage.materializing": {
+    "message": "Applying files"
+  },
+  "app.action-bar.backup-stage.queued": {
+    "message": "Queued"
+  },
+  "app.action-bar.backup-stage.saving": {
+    "message": "Saving backup"
+  },
+  "app.action-bar.backup-stage.scanning": {
+    "message": "Scanning files"
+  },
+  "app.action-bar.backup-stage.validating": {
+    "message": "Validating backup"
+  },
+  "app.action-bar.backup-task.backup": {
+    "message": "Backup"
+  },
+  "app.action-bar.backup-task.cancelled": {
+    "message": "{operation} cancelled"
+  },
+  "app.action-bar.backup-task.completed": {
+    "message": "{operation} completed"
+  },
+  "app.action-bar.backup-task.failed": {
+    "message": "{operation} failed"
+  },
+  "app.action-bar.backup-task.repository-move": {
+    "message": "Backup repository move"
+  },
+  "app.action-bar.backup-task.restore": {
+    "message": "Backup restore"
+  },
+  "app.action-bar.backup-task.restore-preview": {
+    "message": "Restore analysis"
+  },
   "app.action-bar.downloading-java": {
     "message": "Downloading Java {version}"
   },
@@ -10,6 +64,48 @@
   },
   "app.action-bar.downloads": {
     "message": "Downloads"
+  },
+  "app.action-bar.downloads.cancel": {
+    "message": "Cancel download"
+  },
+  "app.action-bar.downloads.empty": {
+    "message": "No active downloads"
+  },
+  "app.action-bar.downloads.legacy": {
+    "message": "A download is in progress."
+  },
+  "app.action-bar.downloads.phase.downloading-content": {
+    "message": "Downloading content"
+  },
+  "app.action-bar.downloads.phase.downloading-minecraft": {
+    "message": "Downloading Minecraft"
+  },
+  "app.action-bar.downloads.phase.downloading-pack": {
+    "message": "Downloading modpack"
+  },
+  "app.action-bar.downloads.phase.finalizing": {
+    "message": "Finalizing"
+  },
+  "app.action-bar.downloads.phase.preparing-instance": {
+    "message": "Preparing instance"
+  },
+  "app.action-bar.downloads.phase.preparing-java": {
+    "message": "Preparing Java"
+  },
+  "app.action-bar.downloads.phase.resolving-pack": {
+    "message": "Resolving modpack"
+  },
+  "app.action-bar.downloads.phase.unknown": {
+    "message": "Working"
+  },
+  "app.action-bar.downloads.phase.verifying": {
+    "message": "Verifying"
+  },
+  "app.action-bar.downloads.view-details": {
+    "message": "View details"
+  },
+  "app.action-bar.downloads.view-history": {
+    "message": "View download history"
   },
   "app.action-bar.exporting-modpack": {
     "message": "Exporting modpack"
@@ -31,6 +127,9 @@
   },
   "app.action-bar.install.cache-repair.title": {
     "message": "Project metadata cache error"
+  },
+  "app.action-bar.install.cancel": {
+    "message": "Cancel"
   },
   "app.action-bar.install.copied-details": {
     "message": "Copied"
@@ -128,6 +227,18 @@
   "app.action-bar.no-instances-running": {
     "message": "No instances running"
   },
+  "app.action-bar.notifications": {
+    "message": "Notifications"
+  },
+  "app.action-bar.notifications.clear": {
+    "message": "Clear all"
+  },
+  "app.action-bar.notifications.dismiss": {
+    "message": "Dismiss notification"
+  },
+  "app.action-bar.notifications.empty": {
+    "message": "No notifications"
+  },
   "app.action-bar.offline": {
     "message": "Offline"
   },
@@ -136,6 +247,18 @@
   },
   "app.action-bar.reload-to-update": {
     "message": "Reload to update"
+  },
+  "app.action-bar.repository": {
+    "message": "Backup repository"
+  },
+  "app.action-bar.repository-move": {
+    "message": "Moving backup repository"
+  },
+  "app.action-bar.restore": {
+    "message": "Restoring backup"
+  },
+  "app.action-bar.restore-preview": {
+    "message": "Analyzing restore"
   },
   "app.action-bar.show-more-running-instances": {
     "message": "Show more running instances"
@@ -236,6 +359,12 @@
   "app.ai-settings.field.region": {
     "message": "Region"
   },
+  "app.ai-settings.looking-for-translation": {
+    "message": "Looking for content translation?"
+  },
+  "app.ai-settings.looking-for-translation.description": {
+    "message": "Translating project titles and descriptions is configured under Language & translation. AI providers here can power that feature when you pick the AI translation service."
+  },
   "app.ai-settings.master-switch": {
     "message": "Enable AI features"
   },
@@ -295,6 +424,9 @@
   },
   "app.ai-settings.oauth.reconnect": {
     "message": "Reconnect account"
+  },
+  "app.ai-settings.open-language-translation": {
+    "message": "Open Language & translation"
   },
   "app.ai-settings.refresh-models": {
     "message": "Fetch models"
@@ -380,6 +512,15 @@
   "app.appearance-settings.accent-color.purple": {
     "message": "Purple"
   },
+  "app.appearance-settings.accent-color.system": {
+    "message": "Follow system"
+  },
+  "app.appearance-settings.accent-color.system-unsupported": {
+    "message": "System unsupported"
+  },
+  "app.appearance-settings.accent-color.system-unsupported-label": {
+    "message": "Follow system: System unsupported"
+  },
   "app.appearance-settings.accent-color.title": {
     "message": "Accent color"
   },
@@ -389,17 +530,26 @@
   "app.appearance-settings.advanced-rendering.title": {
     "message": "Advanced rendering"
   },
-  "app.appearance-settings.auto-hide-downloads-button.description": {
-    "message": "Hide the downloads button in the sidebar when there are no active download tasks."
-  },
-  "app.appearance-settings.auto-hide-downloads-button.title": {
-    "message": "Auto-hide downloads button"
-  },
   "app.appearance-settings.auto-install-dependencies.description": {
     "message": "Download required dependencies when installing content. You can adjust the selection in the confirmation dialog before each install."
   },
   "app.appearance-settings.auto-install-dependencies.title": {
     "message": "Automatically install dependencies"
+  },
+  "app.appearance-settings.close-behavior.ask": {
+    "message": "Ask every time"
+  },
+  "app.appearance-settings.close-behavior.close": {
+    "message": "Close directly"
+  },
+  "app.appearance-settings.close-behavior.description": {
+    "message": "Choose whether closing the window exits the launcher or hides it to the tray."
+  },
+  "app.appearance-settings.close-behavior.lightweight": {
+    "message": "Hide to tray"
+  },
+  "app.appearance-settings.close-behavior.title": {
+    "message": "Choose how to close Axolotl Launcher"
   },
   "app.appearance-settings.color-theme.description": {
     "message": "Select your preferred color theme for Axolotl Launcher."
@@ -416,8 +566,20 @@
   "app.appearance-settings.custom-background.choose": {
     "message": "Choose image"
   },
+  "app.appearance-settings.custom-background.choose-or-drop": {
+    "message": "Click to choose, or drop an image here"
+  },
+  "app.appearance-settings.custom-background.component-opacity": {
+    "message": "Component opacity"
+  },
+  "app.appearance-settings.custom-background.component-opacity-description": {
+    "message": "How opaque launcher components and chrome stay over a custom background. At 100% components are fully opaque; lower it to let the image show through."
+  },
   "app.appearance-settings.custom-background.description": {
-    "message": "Choose a custom image and fine-tune how it blends with the launcher interface."
+    "message": "Choose or drop a custom image, then fine-tune how it blends with the launcher interface."
+  },
+  "app.appearance-settings.custom-background.drop-hint": {
+    "message": "Drop image here"
   },
   "app.appearance-settings.custom-background.empty": {
     "message": "No custom background selected"
@@ -452,6 +614,78 @@
   "app.appearance-settings.default-landing-page.title": {
     "message": "Default landing page"
   },
+  "app.appearance-settings.fonts.default": {
+    "message": "Launcher default"
+  },
+  "app.appearance-settings.fonts.description": {
+    "message": "Choose the fonts the launcher interface and its logs are rendered in."
+  },
+  "app.appearance-settings.fonts.load-failed": {
+    "message": "Couldn't read the list of installed fonts."
+  },
+  "app.appearance-settings.fonts.missing": {
+    "message": "Not installed"
+  },
+  "app.appearance-settings.fonts.mono-font": {
+    "message": "Monospace font"
+  },
+  "app.appearance-settings.fonts.mono-font-description": {
+    "message": "Used for logs, the server console, and other monospace content."
+  },
+  "app.appearance-settings.fonts.mono-preview-sample": {
+    "message": "[12:34:56] [Server thread/INFO]: Preparing spawn area: 43%"
+  },
+  "app.appearance-settings.fonts.monospace": {
+    "message": "Monospace"
+  },
+  "app.appearance-settings.fonts.no-results": {
+    "message": "No matching fonts"
+  },
+  "app.appearance-settings.fonts.preview": {
+    "message": "Preview"
+  },
+  "app.appearance-settings.fonts.reset": {
+    "message": "Reset to default"
+  },
+  "app.appearance-settings.fonts.retry": {
+    "message": "Retry"
+  },
+  "app.appearance-settings.fonts.search-placeholder": {
+    "message": "Search installed fonts"
+  },
+  "app.appearance-settings.fonts.title": {
+    "message": "Fonts"
+  },
+  "app.appearance-settings.fonts.ui-font": {
+    "message": "Interface font"
+  },
+  "app.appearance-settings.fonts.ui-font-description": {
+    "message": "Used across the launcher interface. Only fonts installed on this system are listed."
+  },
+  "app.appearance-settings.fonts.ui-preview-sample": {
+    "message": "The quick brown fox jumps over the lazy dog. 0123456789"
+  },
+  "app.appearance-settings.hidden-nav-items.description": {
+    "message": "Choose which fixed navigation buttons stay visible. Hidden pages remain reachable by URL or keyboard shortcuts."
+  },
+  "app.appearance-settings.hidden-nav-items.group-browse": {
+    "message": "Browse"
+  },
+  "app.appearance-settings.hidden-nav-items.group-play": {
+    "message": "Play"
+  },
+  "app.appearance-settings.hidden-nav-items.group-tools": {
+    "message": "Tools"
+  },
+  "app.appearance-settings.hidden-nav-items.locked-core": {
+    "message": "Home and Library always stay visible so you can find your way back."
+  },
+  "app.appearance-settings.hidden-nav-items.locked-default-page": {
+    "message": "This item is your default landing page. Change that first to hide it."
+  },
+  "app.appearance-settings.hidden-nav-items.title": {
+    "message": "Navigation items"
+  },
   "app.appearance-settings.hide-nametag.description": {
     "message": "Disables the nametag above your player on the skins page."
   },
@@ -469,6 +703,12 @@
   },
   "app.appearance-settings.home-layout.title": {
     "message": "Home layout"
+  },
+  "app.appearance-settings.home-widget-background-opacity.description": {
+    "message": "Lower this to let the launcher background show through home widgets."
+  },
+  "app.appearance-settings.home-widget-background-opacity.title": {
+    "message": "Home widget background opacity"
   },
   "app.appearance-settings.lightweight-mode.description": {
     "message": "Closes the launcher webview after Minecraft starts to reduce memory use. Restore it from the system tray."
@@ -494,6 +734,15 @@
   "app.appearance-settings.page-transitions.title": {
     "message": "Page transition animations"
   },
+  "app.appearance-settings.sections.advanced-interface": {
+    "message": "Advanced interface"
+  },
+  "app.appearance-settings.sections.content-behavior": {
+    "message": "Content behavior"
+  },
+  "app.appearance-settings.sections.home-navigation": {
+    "message": "Home & navigation"
+  },
   "app.appearance-settings.select-option": {
     "message": "Select an option"
   },
@@ -502,6 +751,12 @@
   },
   "app.appearance-settings.show-play-time.title": {
     "message": "Show play time"
+  },
+  "app.appearance-settings.show-scroll-top.description": {
+    "message": "Show a floating back-to-top button on scrollable pages."
+  },
+  "app.appearance-settings.show-scroll-top.title": {
+    "message": "Show \"back to top\" button"
   },
   "app.appearance-settings.sidebar-instance-count.description": {
     "message": "Maximum number of instances to show in the sidebar. Set to 0 to show all."
@@ -556,6 +811,30 @@
   },
   "app.auth.sign-in-browser": {
     "message": "Please sign in in the browser window that just opened to continue."
+  },
+  "app.backup-exit.body": {
+    "message": "{count, plural, one {# backup operation is} other {# backup operations are}} still running. Keep the launcher open or hide it to the tray to let them finish."
+  },
+  "app.backup-exit.cancel": {
+    "message": "Cancel tasks and exit"
+  },
+  "app.backup-exit.force": {
+    "message": "Force exit"
+  },
+  "app.backup-exit.repository-move-body": {
+    "message": "The backup repository is being moved. This task cannot be cancelled or force-stopped; keep the launcher open or hide it to the tray until it finishes."
+  },
+  "app.backup-exit.return": {
+    "message": "Return to launcher"
+  },
+  "app.backup-exit.timeout": {
+    "message": "Timed out while waiting for backup operations to stop."
+  },
+  "app.backup-exit.title": {
+    "message": "Backup operations are still running"
+  },
+  "app.backup-exit.tray": {
+    "message": "Hide to tray"
   },
   "app.browse.add": {
     "message": "Add"
@@ -722,23 +1001,20 @@
   "app.browse.source.planet-minecraft": {
     "message": "Planet Minecraft"
   },
-  "app.community-announcement.feedback-middle": {
-    "message": ", or share them with us through "
+  "app.build.beta": {
+    "message": "Beta"
   },
-  "app.community-announcement.feedback-prefix": {
-    "message": "If you have more ideas or suggestions, please join the player QQ group: "
+  "app.close-launcher.direct": {
+    "message": "Close directly"
   },
-  "app.community-announcement.feedback-suffix": {
-    "message": ". We look forward to improving Axolotl Launcher together!"
+  "app.close-launcher.remember": {
+    "message": "Remember my choice"
   },
-  "app.community-announcement.response": {
-    "message": "Since Axolotl Launcher was promoted on video platforms, we have received far more love and attention than we expected, along with many thoughtful suggestions and high-quality reports."
+  "app.close-launcher.title": {
+    "message": "Choose how to close Axolotl Launcher"
   },
-  "app.community-announcement.thanks": {
-    "message": "I have done my best to personally reply to every comment on the videos. Thank you sincerely for all your support!"
-  },
-  "app.community-announcement.title": {
-    "message": "To all our users"
+  "app.close-launcher.tray": {
+    "message": "Hide to tray"
   },
   "app.content-favorites.add": {
     "message": "Add to favorites"
@@ -977,9 +1253,6 @@
   "app.crash-analysis.ai.error": {
     "message": "AI explanation failed: {message}"
   },
-  "app.crash-analysis.ai.settings.description": {
-    "message": "Optionally send a sanitized and shortened crash context to a model configured in AI Providers."
-  },
   "app.crash-analysis.ai.settings.enabled": {
     "message": "Enable AI explanations"
   },
@@ -994,9 +1267,6 @@
   },
   "app.crash-analysis.ai.settings.provider": {
     "message": "AI provider"
-  },
-  "app.crash-analysis.ai.settings.title": {
-    "message": "Crash AI explanation"
   },
   "app.crash-analysis.ai.title": {
     "message": "AI crash explanation"
@@ -1103,6 +1373,9 @@
   "app.curseforge.network-download-failed.notification-title": {
     "message": "Could not download from CurseForge"
   },
+  "app.direct-link-sync.issues-title": {
+    "message": "External Minecraft instances need attention"
+  },
   "app.downloads.action-needed": {
     "message": "Action needed"
   },
@@ -1199,11 +1472,20 @@
   "app.downloads.item-status.completed": {
     "message": "Completed"
   },
+  "app.downloads.item-status.connecting": {
+    "message": "Connecting"
+  },
   "app.downloads.item-status.downloading": {
     "message": "Downloading"
   },
   "app.downloads.item-status.failed": {
     "message": "Failed"
+  },
+  "app.downloads.item-status.finalizing": {
+    "message": "Finalizing"
+  },
+  "app.downloads.item-status.metadata": {
+    "message": "Loading metadata"
   },
   "app.downloads.item-status.pending-verification": {
     "message": "Pending verification"
@@ -1214,11 +1496,23 @@
   "app.downloads.item-status.verifying": {
     "message": "Verifying"
   },
+  "app.downloads.item-status.waiting-for-database": {
+    "message": "Waiting for database"
+  },
+  "app.downloads.item-status.waiting-for-resource": {
+    "message": "Waiting for download resources"
+  },
+  "app.downloads.item-status.worker-started": {
+    "message": "Starting"
+  },
   "app.downloads.item-status.writing": {
     "message": "Writing"
   },
   "app.downloads.local": {
     "message": "Local"
+  },
+  "app.downloads.manual-download-project-file": {
+    "message": "Project {projectId} · File {fileId}"
   },
   "app.downloads.manual-download-required": {
     "message": "CurseForge requires this file to be downloaded manually."
@@ -1340,20 +1634,89 @@
   "app.downloads.open-instance": {
     "message": "Open instance"
   },
+  "app.downloads.open-manual-download": {
+    "message": "Open"
+  },
+  "app.downloads.operation.content-change": {
+    "message": "Content update"
+  },
+  "app.downloads.operation.content-switch-version": {
+    "message": "Switch content version"
+  },
+  "app.downloads.operation.content-update-all": {
+    "message": "Update all content"
+  },
   "app.downloads.operation.upgrade": {
     "message": "Upgrade"
+  },
+  "app.downloads.phase.applying-content": {
+    "message": "Applying content"
+  },
+  "app.downloads.phase.completed": {
+    "message": "Completed"
+  },
+  "app.downloads.phase.creating-backup": {
+    "message": "Creating backup"
+  },
+  "app.downloads.phase.downloading-content": {
+    "message": "Downloading content"
+  },
+  "app.downloads.phase.downloading-minecraft": {
+    "message": "Downloading Minecraft"
   },
   "app.downloads.phase.downloading-pack-file": {
     "message": "Downloading modpack"
   },
+  "app.downloads.phase.extracting-overrides": {
+    "message": "Extracting overrides"
+  },
+  "app.downloads.phase.finalizing": {
+    "message": "Finalizing"
+  },
+  "app.downloads.phase.preparing-instance": {
+    "message": "Preparing instance"
+  },
+  "app.downloads.phase.preparing-java": {
+    "message": "Preparing Java"
+  },
+  "app.downloads.phase.reading-pack-manifest": {
+    "message": "Reading manifest"
+  },
+  "app.downloads.phase.resolving-loader": {
+    "message": "Resolving loader"
+  },
+  "app.downloads.phase.resolving-minecraft": {
+    "message": "Resolving Minecraft"
+  },
+  "app.downloads.phase.resolving-pack": {
+    "message": "Resolving modpack"
+  },
+  "app.downloads.phase.rolling-back": {
+    "message": "Rolling back changes"
+  },
+  "app.downloads.phase.running-loader-processors": {
+    "message": "Installing loader"
+  },
+  "app.downloads.phase.staging-content": {
+    "message": "Staging content"
+  },
   "app.downloads.phase.unknown": {
     "message": "Working"
+  },
+  "app.downloads.phase.updating-loader": {
+    "message": "Updating loader"
+  },
+  "app.downloads.phase.verifying": {
+    "message": "Verifying"
   },
   "app.downloads.phase.verifying-downloaded-files": {
     "message": "Verifying files and continuing installation"
   },
   "app.downloads.progress": {
     "message": "Progress"
+  },
+  "app.downloads.retired-source": {
+    "message": "This download source has been retired. Resolve the file again or choose a verified local file."
   },
   "app.downloads.retry": {
     "message": "Retry"
@@ -1679,6 +2042,18 @@
   "app.error.space-title": {
     "message": "Not enough space"
   },
+  "app.error.state-database-newer-description": {
+    "message": "The database was last opened by a newer version of Axolotl, which upgraded it to a format this version cannot read. Your instances and settings are still there."
+  },
+  "app.error.state-database-newer-fix-downgrade": {
+    "message": "If you are trying out a build rather than using the launcher normally, revert the database with scripts/axolotl/downgrade-app-db.mjs instead."
+  },
+  "app.error.state-database-newer-fix-intro": {
+    "message": "To start the launcher again, either:"
+  },
+  "app.error.state-database-newer-fix-update": {
+    "message": "Reinstall the newer version of Axolotl - it opens this database as it is."
+  },
   "app.error.state-description": {
     "message": "Axolotl Launcher failed to load correctly. A file may be corrupted or an essential file may be missing."
   },
@@ -1739,6 +2114,66 @@
   "app.gc-notice.fallback": {
     "message": "Java did not accept {preferred}; using {chosen}."
   },
+  "app.headless-demo.brand-button": {
+    "message": "Brand button"
+  },
+  "app.headless-demo.checkbox-label": {
+    "message": "Accept demo checkbox (brand fill when checked)"
+  },
+  "app.headless-demo.controls": {
+    "message": "Controls"
+  },
+  "app.headless-demo.description": {
+    "message": "Isolated reka-ui primitives styled only with existing app tokens. Switch theme in Settings → Appearance to verify light, dark, and OLED."
+  },
+  "app.headless-demo.dialog-close": {
+    "message": "Close"
+  },
+  "app.headless-demo.dialog-description": {
+    "message": "This dialog content uses bg-surface-3, text-[var(--color-text-primary)], and border-surface-5. Overlay and focus ring stay readable in every theme."
+  },
+  "app.headless-demo.dialog-title": {
+    "message": "Token-mapped dialog"
+  },
+  "app.headless-demo.loader-fabric": {
+    "message": "Fabric"
+  },
+  "app.headless-demo.loader-forge": {
+    "message": "Forge"
+  },
+  "app.headless-demo.loader-neoforge": {
+    "message": "NeoForge"
+  },
+  "app.headless-demo.loader-vanilla": {
+    "message": "Vanilla"
+  },
+  "app.headless-demo.open-dialog": {
+    "message": "Open dialog"
+  },
+  "app.headless-demo.select-label": {
+    "message": "Loader"
+  },
+  "app.headless-demo.select-placeholder": {
+    "message": "Pick a loader"
+  },
+  "app.headless-demo.standard-button": {
+    "message": "Standard button"
+  },
+  "app.headless-demo.surfaces": {
+    "message": "Surfaces"
+  },
+  "app.headless-demo.theme-hint": {
+    "message": "No second theme system is introduced here — surfaces and brand colors follow the active theme."
+  },
+  "app.headless-demo.title": {
+    "message": "Headless token demo"
+  },
+  "app.headless-demo.tooltip-content": {
+    "message": "Tooltip body mapped to surface-4 / text-[var(--color-text-primary)]."
+  },
+  "app.headless-demo.tooltip-trigger": {
+    "message": "Hover tooltip"
+  },
   "app.home.breadcrumb": {
     "message": "Home"
   },
@@ -1781,11 +2216,41 @@
   "app.home.challenge.title": {
     "message": "Daily challenge"
   },
+  "app.home.greeting.account.nickname.hint": {
+    "message": "Replaces the account name in the greeting. Leave it empty to use the account name."
+  },
+  "app.home.greeting.account.nickname.label": {
+    "message": "Nickname"
+  },
+  "app.home.greeting.account.nickname.unavailable": {
+    "message": "A nickname replaces an account name, so it needs a signed-in Microsoft or Yggdrasil account."
+  },
+  "app.home.greeting.account.tab.nickname": {
+    "message": "Nickname"
+  },
+  "app.home.greeting.account.tab.title": {
+    "message": "Whole title"
+  },
+  "app.home.greeting.account.title": {
+    "message": "Customize greeting"
+  },
+  "app.home.greeting.account.title.hint": {
+    "message": "Replaces the whole heading, greeting included. Leave it empty for the automatic text."
+  },
+  "app.home.greeting.account.title.label": {
+    "message": "Title text"
+  },
+  "app.home.greeting.account.title.placeholder": {
+    "message": "Welcome back…"
+  },
   "app.home.greeting.afternoon": {
     "message": "Afternoon break, excellent timing.\nA short session can become a great one.\nThe world is ready for your next move.\nTime to check on that half-finished build.\nA little exploration goes a long way.\nThe next biome is calling.\nYour inventory has been waiting patiently.\nThe village market is still open.\nA good hour for a focused project.\nThe redstone probably behaves today.\nYour pickaxe is ready to work.\nA new route is waiting beyond spawn.\nThe afternoon is made for side quests.\nOne quick visit to your world?\nThe next chapter starts here.\nTake a moment and make something."
   },
   "app.home.greeting.dawn": {
     "message": "First light, fresh chunks.\nA new day is loading in.\nThe sunrise buff is active.\nMorning worlds feel brand new.\nCoffee first, diamonds second.\nYour base missed you overnight.\nA calm start makes a fine adventure.\nThe overworld is waking up.\nFresh air, fresh resource packs.\nToday is a good day to explore.\nThe village is already open for trade.\nA quiet morning suits a big build.\nNew day, new coordinates.\nThe creepers are not morning people either.\nStart small and see where it goes.\nYour next session is ready when you are."
+  },
+  "app.home.greeting.edit": {
+    "message": "Edit greeting"
   },
   "app.home.greeting.evening": {
     "message": "Evening is prime building time.\nThe day is winding down; the world is opening up.\nA familiar world makes a good landing spot.\nTime to return to your favorite project.\nThe sunset looks better from a new tower.\nYour base lights are waiting.\nA relaxed session sounds about right.\nThe villagers are closing shop soon.\nYour next build deserves an evening glow.\nA good time to wander without a plan.\nThe campfire is already lit.\nOne more room for the base?\nThe horizon is looking especially inviting.\nA quiet night starts with a good world.\nThe next block is yours to place.\nMake tonight's progress count."
@@ -1988,11 +2453,38 @@
   "app.home.recent.title": {
     "message": "Start from your recent projects"
   },
+  "app.home.servers.change-local-server": {
+    "message": "Change linked local server"
+  },
   "app.home.servers.empty": {
     "message": "Favorite a server and it will be pinned here."
   },
   "app.home.servers.join": {
     "message": "Join server"
+  },
+  "app.home.servers.link-local-server": {
+    "message": "Link to a local server"
+  },
+  "app.home.servers.link-picker.description": {
+    "message": "Launching this server from Home will start the chosen local server first and wait until it is ready."
+  },
+  "app.home.servers.link-picker.empty": {
+    "message": "No local servers yet. Create one first, then link it here."
+  },
+  "app.home.servers.link-picker.select": {
+    "message": "Link {name}"
+  },
+  "app.home.servers.link-picker.title": {
+    "message": "Link a local server"
+  },
+  "app.home.servers.linked-toast": {
+    "message": "Linked to the local server “{name}”"
+  },
+  "app.home.servers.local": {
+    "message": "Local"
+  },
+  "app.home.servers.local-server-not-ready": {
+    "message": "The linked local server did not start in time. Check its console and try again."
   },
   "app.home.servers.more-options": {
     "message": "More options"
@@ -2008,6 +2500,12 @@
   },
   "app.home.servers.stop": {
     "message": "Stop"
+  },
+  "app.home.servers.unlink-local-server": {
+    "message": "Unlink local server"
+  },
+  "app.home.servers.unlinked-toast": {
+    "message": "Unlinked the local server"
   },
   "app.home.servers.unpin": {
     "message": "Unpin from Home"
@@ -2174,6 +2672,9 @@
   "app.home.worlds.pinned": {
     "message": "Pinned worlds"
   },
+  "app.initialization.quit": {
+    "message": "Quit launcher"
+  },
   "app.install.phase.downloading_content": {
     "message": "Downloading content"
   },
@@ -2249,6 +2750,9 @@
   "app.instance.confirm-delete.admonition-header": {
     "message": "This action cannot be undone"
   },
+  "app.instance.confirm-delete.backup-cascade-warning": {
+    "message": "{count, plural, one {# backup} other {# backups}} ({size} total before deduplication) will also be permanently deleted."
+  },
   "app.instance.confirm-delete.batch-admonition-body": {
     "message": "{count, plural, one {# instance} other {# instances}} will be permanently deleted, including worlds, configs, and all installed content."
   },
@@ -2310,10 +2814,10 @@
     "message": "File {file}"
   },
   "app.instance.dependencies.graph-direction": {
-    "message": "Arrows point from dependent content to the content it uses."
+    "message": "Stable relationship clusters. Arrows point from dependent content to the content it uses."
   },
   "app.instance.dependencies.graph-hint": {
-    "message": "Drag the canvas to explore. Drag a card to arrange it."
+    "message": "Drag the canvas to explore. Cards stay where you place them."
   },
   "app.instance.dependencies.graph-view": {
     "message": "Relationship graph"
@@ -2723,6 +3227,9 @@
   "app.instance.mods.bulk-update.resolving-versions": {
     "message": "Resolving versions..."
   },
+  "app.instance.mods.content-operation-timeout": {
+    "message": "Timed out waiting for another content operation to finish. Try again."
+  },
   "app.instance.mods.content-refresh-warning.body": {
     "message": "Local content is still complete and can be managed. Names, icons, or update information may be temporarily unavailable."
   },
@@ -2855,51 +3362,6 @@
   "app.instance.post-upgrade-status": {
     "message": "Upgraded to {version}"
   },
-  "app.instance.screenshots.action-failed": {
-    "message": "Screenshot action failed"
-  },
-  "app.instance.screenshots.copied": {
-    "message": "Screenshot copied"
-  },
-  "app.instance.screenshots.copy": {
-    "message": "Copy image"
-  },
-  "app.instance.screenshots.copy-failed": {
-    "message": "Could not copy screenshot"
-  },
-  "app.instance.screenshots.delete": {
-    "message": "Delete screenshot"
-  },
-  "app.instance.screenshots.delete-description": {
-    "message": "Are you sure you want to permanently delete {name}?"
-  },
-  "app.instance.screenshots.delete-failed": {
-    "message": "Could not delete screenshot"
-  },
-  "app.instance.screenshots.empty-description": {
-    "message": "Screenshots taken in Minecraft will appear here automatically."
-  },
-  "app.instance.screenshots.empty-title": {
-    "message": "No screenshots yet"
-  },
-  "app.instance.screenshots.loading-failed": {
-    "message": "Could not load screenshots"
-  },
-  "app.instance.screenshots.no-search-results": {
-    "message": "No screenshots match your search."
-  },
-  "app.instance.screenshots.open-folder": {
-    "message": "Open screenshots folder"
-  },
-  "app.instance.screenshots.save-as": {
-    "message": "Save as..."
-  },
-  "app.instance.screenshots.search-placeholder": {
-    "message": "Search {count} screenshots..."
-  },
-  "app.instance.screenshots.view": {
-    "message": "View screenshot"
-  },
   "app.instance.screenshots.zoom-in": {
     "message": "View at full size"
   },
@@ -3005,20 +3467,53 @@
   "app.instances.add-content": {
     "message": "Add content"
   },
-  "app.instances.batch-edit-groups.apply": {
-    "message": "Apply"
+  "app.instances.batch-edit-groups.add": {
+    "message": "Add"
   },
-  "app.instances.batch-edit-groups.create-group": {
-    "message": "Create new group"
+  "app.instances.batch-edit-groups.add-to-group-title": {
+    "message": "Add instances to \"{groupName}\""
   },
-  "app.instances.batch-edit-groups.description": {
-    "message": "Select groups to apply to {count} instance(s)."
+  "app.instances.batch-edit-groups.added": {
+    "message": "Added"
   },
-  "app.instances.batch-edit-groups.enter-group-name": {
+  "app.instances.batch-edit-groups.cancel": {
+    "message": "Cancel"
+  },
+  "app.instances.batch-edit-groups.create": {
+    "message": "Create group"
+  },
+  "app.instances.batch-edit-groups.group-name": {
+    "message": "Group name"
+  },
+  "app.instances.batch-edit-groups.group-name-placeholder": {
     "message": "Enter group name"
   },
   "app.instances.batch-edit-groups.header": {
-    "message": "Edit groups"
+    "message": "Create group"
+  },
+  "app.instances.batch-edit-groups.load-failed": {
+    "message": "Could not load instances. Try again."
+  },
+  "app.instances.batch-edit-groups.loading": {
+    "message": "Loading instances…"
+  },
+  "app.instances.batch-edit-groups.membership-failed": {
+    "message": "The group was created, but its instances could not be saved. Retry to finish saving your changes."
+  },
+  "app.instances.batch-edit-groups.no-instances-found": {
+    "message": "No instances found"
+  },
+  "app.instances.batch-edit-groups.retry": {
+    "message": "Retry"
+  },
+  "app.instances.batch-edit-groups.save-changes": {
+    "message": "Save"
+  },
+  "app.instances.batch-edit-groups.save-failed": {
+    "message": "Could not save the group. Your changes are kept; try again."
+  },
+  "app.instances.batch-edit-groups.search-instance": {
+    "message": "Search instances"
   },
   "app.instances.copy-path": {
     "message": "Copy path"
@@ -3033,19 +3528,61 @@
     "message": "Edit groups"
   },
   "app.instances.group-by": {
-    "message": "Group by:"
+    "message": "Group by"
+  },
+  "app.instances.group.add-to-group": {
+    "message": "Add to group"
+  },
+  "app.instances.group.collapse": {
+    "message": "Collapse group"
+  },
+  "app.instances.group.delete-description": {
+    "message": "Instances in this group will be ungrouped."
+  },
+  "app.instances.group.delete-group": {
+    "message": "Delete group"
+  },
+  "app.instances.group.edit-name": {
+    "message": "Edit group name"
+  },
+  "app.instances.group.empty": {
+    "message": "Drag and drop to add instances."
+  },
+  "app.instances.group.expand": {
+    "message": "Expand group"
   },
   "app.instances.group.game-version": {
     "message": "Game version"
   },
   "app.instances.group.group": {
-    "message": "Group"
+    "message": "Custom group"
   },
   "app.instances.group.loader": {
     "message": "Loader"
   },
+  "app.instances.group.move-down": {
+    "message": "Move group down"
+  },
+  "app.instances.group.move-up": {
+    "message": "Move group up"
+  },
+  "app.instances.group.name-empty": {
+    "message": "Group names cannot be empty."
+  },
+  "app.instances.group.name-too-long": {
+    "message": "Group names cannot be longer than {maxLength} characters."
+  },
+  "app.instances.group.new-instance": {
+    "message": "New instance"
+  },
   "app.instances.group.none": {
-    "message": "None"
+    "message": "No grouping"
+  },
+  "app.instances.group.pinned": {
+    "message": "Pinned"
+  },
+  "app.instances.group.rename-group": {
+    "message": "Rename group"
   },
   "app.instances.group.ungrouped": {
     "message": "No group"
@@ -3065,11 +3602,38 @@
   "app.instances.selected-count": {
     "message": "{count, plural, one {# selected} other {# selected}}"
   },
+  "app.instances.sort-by": {
+    "message": "Sort by"
+  },
   "app.instances.sort.date-created": {
     "message": "Date created"
   },
   "app.instances.sort.date-modified": {
     "message": "Date modified"
+  },
+  "app.instances.sort.direction.asc-alphabetical": {
+    "message": "A–Z"
+  },
+  "app.instances.sort.direction.asc-date": {
+    "message": "Oldest first"
+  },
+  "app.instances.sort.direction.asc-recency": {
+    "message": "Least recent first"
+  },
+  "app.instances.sort.direction.asc-version": {
+    "message": "Oldest version first"
+  },
+  "app.instances.sort.direction.desc-alphabetical": {
+    "message": "Z–A"
+  },
+  "app.instances.sort.direction.desc-date": {
+    "message": "Newest first"
+  },
+  "app.instances.sort.direction.desc-recency": {
+    "message": "Most recent first"
+  },
+  "app.instances.sort.direction.desc-version": {
+    "message": "Newest version first"
   },
   "app.instances.sort.last-played": {
     "message": "Last played"
@@ -3082,6 +3646,45 @@
   },
   "app.instances.view-instance": {
     "message": "View instance"
+  },
+  "app.java-arguments.gc.reason.ample-memory-high-cores": {
+    "message": "Ample memory and high CPU core count"
+  },
+  "app.java-arguments.gc.reason.below-zgc-recommendation": {
+    "message": "Resources below ZGC recommendation"
+  },
+  "app.java-arguments.gc.reason.heavy-instance": {
+    "message": "Heavy instance ({loader}, {mods} mods)"
+  },
+  "app.java-arguments.gc.reason.high-resources": {
+    "message": "High resources ({memory}GB, {cores} cores)"
+  },
+  "app.java-arguments.gc.reason.insufficient-cpu": {
+    "message": "Insufficient CPU ({cores} cores / {threads} threads)"
+  },
+  "app.java-arguments.gc.reason.insufficient-memory": {
+    "message": "Insufficient memory ({allocated}GB < 4GB)"
+  },
+  "app.java-arguments.gc.reason.java-too-old": {
+    "message": "Java too old; Shenandoah/ZGC unreliable"
+  },
+  "app.java-arguments.gc.reason.java-version-unknown": {
+    "message": "Java version unknown"
+  },
+  "app.java-arguments.gc.reason.large-modpack-low-memory": {
+    "message": "Large modpack ({mods} mods) but insufficient memory ({allocated}GB < 8GB)"
+  },
+  "app.java-arguments.gc.reason.lightweight-instance": {
+    "message": "Lightweight instance ({loader}, {mods} mods)"
+  },
+  "app.java-arguments.gc.reason.low-resources": {
+    "message": "Low resources ({memory}GB, {cores} cores)"
+  },
+  "app.java-arguments.gc.reason.medium-resources": {
+    "message": "Medium resources ({memory}GB, {cores} cores)"
+  },
+  "app.java-arguments.gc.reason.zgc-non-generational": {
+    "message": "Java < 21; non-generational ZGC performs poorly"
   },
   "app.java-arguments.presets.applied": {
     "message": "Applied"
@@ -3467,6 +4070,12 @@
   "app.lab.mod-translation.completed-count": {
     "message": "{count} completed"
   },
+  "app.lab.mod-translation.copy-diagnostics": {
+    "message": "Copy diagnostics"
+  },
+  "app.lab.mod-translation.copy-diagnostics-info": {
+    "message": "Copy diagnostic information"
+  },
   "app.lab.mod-translation.description": {
     "message": "Translate any Minecraft mod JAR into Simplified Chinese."
   },
@@ -3554,11 +4163,38 @@
   "app.lab.mod-translation.preparing": {
     "message": "Preparing…"
   },
+  "app.lab.mod-translation.progress.current-batch": {
+    "message": "Batch {completed} / {total}"
+  },
+  "app.lab.mod-translation.progress.recently-written": {
+    "message": "Recently written"
+  },
+  "app.lab.mod-translation.progress.verified-weights": {
+    "message": "Verified {verified} / {total}"
+  },
+  "app.lab.mod-translation.progress.workload-measuring": {
+    "message": "Establishing a verifiable workload…"
+  },
   "app.lab.mod-translation.provider": {
     "message": "AI provider"
   },
   "app.lab.mod-translation.repair-enabled": {
     "message": "Repair difficult translations after verification"
+  },
+  "app.lab.mod-translation.result.changed-files": {
+    "message": "Changed files: {files}"
+  },
+  "app.lab.mod-translation.result.class-text": {
+    "message": "Class text"
+  },
+  "app.lab.mod-translation.result.completed": {
+    "message": "Translation complete"
+  },
+  "app.lab.mod-translation.result.completed-warnings": {
+    "message": "Generated, but some text is still uncovered"
+  },
+  "app.lab.mod-translation.result.mod-label": {
+    "message": "Mod"
   },
   "app.lab.mod-translation.select-file": {
     "message": "Choose a mod JAR"
@@ -3571,6 +4207,15 @@
   },
   "app.lab.mod-translation.start-hint": {
     "message": "Choose a JAR and an AI model to start."
+  },
+  "app.lab.mod-translation.technical-details": {
+    "message": "Technical details"
+  },
+  "app.lab.mod-translation.timeline.empty": {
+    "message": "Waiting for processing events…"
+  },
+  "app.lab.mod-translation.timeline.title": {
+    "message": "Processing timeline ({count})"
   },
   "app.lab.mod-translation.title": {
     "message": "Mod translation"
@@ -4349,6 +4994,201 @@
   "app.lab.seed-map.biome-tag": {
     "message": "Biome"
   },
+  "app.lab.seed-map.biome.badlands": {
+    "message": "Badlands"
+  },
+  "app.lab.seed-map.biome.bamboo-jungle": {
+    "message": "Bamboo Jungle"
+  },
+  "app.lab.seed-map.biome.basalt-deltas": {
+    "message": "Basalt Deltas"
+  },
+  "app.lab.seed-map.biome.beach": {
+    "message": "Beach"
+  },
+  "app.lab.seed-map.biome.birch-forest": {
+    "message": "Birch Forest"
+  },
+  "app.lab.seed-map.biome.cherry-grove": {
+    "message": "Cherry Grove"
+  },
+  "app.lab.seed-map.biome.cold-ocean": {
+    "message": "Cold Ocean"
+  },
+  "app.lab.seed-map.biome.crimson-forest": {
+    "message": "Crimson Forest"
+  },
+  "app.lab.seed-map.biome.dark-forest": {
+    "message": "Dark Forest"
+  },
+  "app.lab.seed-map.biome.deep-cold-ocean": {
+    "message": "Deep Cold Ocean"
+  },
+  "app.lab.seed-map.biome.deep-dark": {
+    "message": "Deep Dark"
+  },
+  "app.lab.seed-map.biome.deep-frozen-ocean": {
+    "message": "Deep Frozen Ocean"
+  },
+  "app.lab.seed-map.biome.deep-lukewarm-ocean": {
+    "message": "Deep Lukewarm Ocean"
+  },
+  "app.lab.seed-map.biome.deep-ocean": {
+    "message": "Deep Ocean"
+  },
+  "app.lab.seed-map.biome.desert": {
+    "message": "Desert"
+  },
+  "app.lab.seed-map.biome.dripstone-caves": {
+    "message": "Dripstone Caves"
+  },
+  "app.lab.seed-map.biome.end-barrens": {
+    "message": "End Barrens"
+  },
+  "app.lab.seed-map.biome.end-highlands": {
+    "message": "End Highlands"
+  },
+  "app.lab.seed-map.biome.end-midlands": {
+    "message": "End Midlands"
+  },
+  "app.lab.seed-map.biome.eroded-badlands": {
+    "message": "Eroded Badlands"
+  },
+  "app.lab.seed-map.biome.flower-forest": {
+    "message": "Flower Forest"
+  },
+  "app.lab.seed-map.biome.forest": {
+    "message": "Forest"
+  },
+  "app.lab.seed-map.biome.frozen-ocean": {
+    "message": "Frozen Ocean"
+  },
+  "app.lab.seed-map.biome.frozen-peaks": {
+    "message": "Frozen Peaks"
+  },
+  "app.lab.seed-map.biome.frozen-river": {
+    "message": "Frozen River"
+  },
+  "app.lab.seed-map.biome.grove": {
+    "message": "Grove"
+  },
+  "app.lab.seed-map.biome.ice-spikes": {
+    "message": "Ice Spikes"
+  },
+  "app.lab.seed-map.biome.jagged-peaks": {
+    "message": "Jagged Peaks"
+  },
+  "app.lab.seed-map.biome.jungle": {
+    "message": "Jungle"
+  },
+  "app.lab.seed-map.biome.lukewarm-ocean": {
+    "message": "Lukewarm Ocean"
+  },
+  "app.lab.seed-map.biome.lush-caves": {
+    "message": "Lush Caves"
+  },
+  "app.lab.seed-map.biome.mangrove-swamp": {
+    "message": "Mangrove Swamp"
+  },
+  "app.lab.seed-map.biome.meadow": {
+    "message": "Meadow"
+  },
+  "app.lab.seed-map.biome.mushroom-fields": {
+    "message": "Mushroom Fields"
+  },
+  "app.lab.seed-map.biome.nether-wastes": {
+    "message": "Nether Wastes"
+  },
+  "app.lab.seed-map.biome.ocean": {
+    "message": "Ocean"
+  },
+  "app.lab.seed-map.biome.old-growth-birch-forest": {
+    "message": "Old Growth Birch Forest"
+  },
+  "app.lab.seed-map.biome.old-growth-pine-taiga": {
+    "message": "Old Growth Pine Taiga"
+  },
+  "app.lab.seed-map.biome.old-growth-spruce-taiga": {
+    "message": "Old Growth Spruce Taiga"
+  },
+  "app.lab.seed-map.biome.pale-garden": {
+    "message": "Pale Garden"
+  },
+  "app.lab.seed-map.biome.plains": {
+    "message": "Plains"
+  },
+  "app.lab.seed-map.biome.river": {
+    "message": "River"
+  },
+  "app.lab.seed-map.biome.savanna": {
+    "message": "Savanna"
+  },
+  "app.lab.seed-map.biome.savanna-plateau": {
+    "message": "Savanna Plateau"
+  },
+  "app.lab.seed-map.biome.small-end-islands": {
+    "message": "Small End Islands"
+  },
+  "app.lab.seed-map.biome.snowy-beach": {
+    "message": "Snowy Beach"
+  },
+  "app.lab.seed-map.biome.snowy-plains": {
+    "message": "Snowy Plains"
+  },
+  "app.lab.seed-map.biome.snowy-slopes": {
+    "message": "Snowy Slopes"
+  },
+  "app.lab.seed-map.biome.snowy-taiga": {
+    "message": "Snowy Taiga"
+  },
+  "app.lab.seed-map.biome.soul-sand-valley": {
+    "message": "Soul Sand Valley"
+  },
+  "app.lab.seed-map.biome.sparse-jungle": {
+    "message": "Sparse Jungle"
+  },
+  "app.lab.seed-map.biome.stony-peaks": {
+    "message": "Stony Peaks"
+  },
+  "app.lab.seed-map.biome.stony-shore": {
+    "message": "Stony Shore"
+  },
+  "app.lab.seed-map.biome.sulfur-caves": {
+    "message": "Sulfur Caves"
+  },
+  "app.lab.seed-map.biome.sunflower-plains": {
+    "message": "Sunflower Plains"
+  },
+  "app.lab.seed-map.biome.swamp": {
+    "message": "Swamp"
+  },
+  "app.lab.seed-map.biome.taiga": {
+    "message": "Taiga"
+  },
+  "app.lab.seed-map.biome.the-end": {
+    "message": "The End"
+  },
+  "app.lab.seed-map.biome.warm-ocean": {
+    "message": "Warm Ocean"
+  },
+  "app.lab.seed-map.biome.warped-forest": {
+    "message": "Warped Forest"
+  },
+  "app.lab.seed-map.biome.windswept-forest": {
+    "message": "Windswept Forest"
+  },
+  "app.lab.seed-map.biome.windswept-gravelly-hills": {
+    "message": "Windswept Gravelly Hills"
+  },
+  "app.lab.seed-map.biome.windswept-hills": {
+    "message": "Windswept Hills"
+  },
+  "app.lab.seed-map.biome.windswept-savanna": {
+    "message": "Windswept Savanna"
+  },
+  "app.lab.seed-map.biome.wooded-badlands": {
+    "message": "Wooded Badlands"
+  },
   "app.lab.seed-map.center-spawn": {
     "message": "Center spawn"
   },
@@ -4415,6 +5255,9 @@
   "app.lab.seed-map.copyright.visit-minecraft-search": {
     "message": "Visit MinecraftSearch"
   },
+  "app.lab.seed-map.depth": {
+    "message": "Map depth"
+  },
   "app.lab.seed-map.description": {
     "message": "Explore a Minecraft seed locally with biomes, structures, and saved markers."
   },
@@ -4442,11 +5285,14 @@
   "app.lab.seed-map.edition.java-large-biomes": {
     "message": "Java: Large Biomes"
   },
-  "app.lab.seed-map.elevation": {
-    "message": "Surface"
+  "app.lab.seed-map.elevation.deep-underground": {
+    "message": "Deep underground"
   },
-  "app.lab.seed-map.elevation-locked": {
-    "message": "Follows the estimated surface while terrain estimation is on"
+  "app.lab.seed-map.elevation.shallow-underground": {
+    "message": "Shallow underground"
+  },
+  "app.lab.seed-map.elevation.surface": {
+    "message": "Surface"
   },
   "app.lab.seed-map.exit-fullscreen": {
     "message": "Exit fullscreen"
@@ -4805,11 +5651,29 @@
   "app.lab.tool-count-plural": {
     "message": "{count} tools"
   },
+  "app.library.context-menu.pin-instance": {
+    "message": "Pin in Library"
+  },
+  "app.library.context-menu.remove-from-group": {
+    "message": "Remove from group"
+  },
+  "app.library.context-menu.unpin-instance": {
+    "message": "Unpin from Library"
+  },
   "app.library.create-instance": {
     "message": "Create new instance"
   },
+  "app.library.group.new": {
+    "message": "New group"
+  },
   "app.library.no-instances": {
     "message": "No instances found"
+  },
+  "app.library.selection.new-group": {
+    "message": "New group"
+  },
+  "app.library.selection.remove-from-group": {
+    "message": "Remove from group"
   },
   "app.library.tabs.all-instances": {
     "message": "All instances"
@@ -4840,6 +5704,144 @@
   },
   "app.library.view.standard": {
     "message": "Standard grid"
+  },
+  "app.log-share.ai.action": {
+    "message": "Deep AI analysis"
+  },
+  "app.log-share.ai.confidence": {
+    "message": "Diagnostic confidence"
+  },
+  "app.log-share.ai.evidence": {
+    "message": "Supporting evidence"
+  },
+  "app.log-share.ai.failed": {
+    "message": "LogAgent analysis failed: {message}"
+  },
+  "app.log-share.ai.limit": {
+    "message": "Reached tool loop limit"
+  },
+  "app.log-share.ai.queued": {
+    "message": "Queued, about {position} ahead"
+  },
+  "app.log-share.ai.queued-front": {
+    "message": "Queued, waiting for a free slot"
+  },
+  "app.log-share.ai.root-cause": {
+    "message": "Core root cause"
+  },
+  "app.log-share.ai.steps": {
+    "message": "Recommended troubleshooting steps"
+  },
+  "app.log-share.ai.tab": {
+    "message": "LogAgent detailed analysis"
+  },
+  "app.log-share.ai.thinking": {
+    "message": "Thinking…"
+  },
+  "app.log-share.ai.tool": {
+    "message": "Using tool: {name}"
+  },
+  "app.log-share.ai.tool-result": {
+    "message": "Tool result received"
+  },
+  "app.log-share.ai.unknown-tool": {
+    "message": "tool"
+  },
+  "app.log-share.ai.working": {
+    "message": "Analyzing with LogAgent…"
+  },
+  "app.log-share.settings.ai-source": {
+    "message": "AI analysis source"
+  },
+  "app.log-share.settings.ai-source-custom": {
+    "message": "Custom AI provider"
+  },
+  "app.log-share.settings.ai-source-description": {
+    "message": "Both sources send a sanitized and shortened crash context. AI output may be inaccurate."
+  },
+  "app.log-share.settings.ai-source-logshare": {
+    "message": "LogShare AI"
+  },
+  "app.log-share.settings.auto-upload": {
+    "message": "Upload to get a structured summary automatically"
+  },
+  "app.log-share.settings.auto-upload-description": {
+    "message": "Only effective in LogShare AI mode."
+  },
+  "app.log-share.settings.description": {
+    "message": "Share crash diagnostics with LogShare for a structured summary and optional AI analysis. LogShare is preferred; mclo.gs is used as a fallback."
+  },
+  "app.log-share.settings.multi-file": {
+    "message": "Multi-file upload"
+  },
+  "app.log-share.settings.multi-file-description": {
+    "message": "Upload latest.log, crash reports, hs_err and launcher logs together."
+  },
+  "app.log-share.settings.no-storage": {
+    "message": "Analyze without storing logs"
+  },
+  "app.log-share.settings.no-storage-description": {
+    "message": "Submit content directly for analysis and skip the stored upload. Disables the automatic summary."
+  },
+  "app.log-share.settings.share-provider": {
+    "message": "Log sharing service"
+  },
+  "app.log-share.settings.share-provider-description": {
+    "message": "Where the diagnostic link is uploaded when you share it."
+  },
+  "app.log-share.settings.show-progress": {
+    "message": "Show AI analysis progress"
+  },
+  "app.log-share.settings.show-progress-description": {
+    "message": "Display thinking, tool and limit status while LogShare AI is working."
+  },
+  "app.log-share.settings.title": {
+    "message": "Log sharing & AI analysis"
+  },
+  "app.log-share.shared-logs.delete": {
+    "message": "Delete"
+  },
+  "app.log-share.shared-logs.delete-failed": {
+    "message": "Failed to delete the shared log."
+  },
+  "app.log-share.shared-logs.deleted": {
+    "message": "Shared log removed."
+  },
+  "app.log-share.shared-logs.deleting": {
+    "message": "Deleting…"
+  },
+  "app.log-share.shared-logs.description": {
+    "message": "Every diagnostic you have shared is listed here. Delete an entry to remove it from your history and request its removal from the sharing service."
+  },
+  "app.log-share.shared-logs.empty": {
+    "message": "No shared logs yet."
+  },
+  "app.log-share.shared-logs.title": {
+    "message": "Shared logs"
+  },
+  "app.log-share.shared-logs.truncated": {
+    "message": "Truncated"
+  },
+  "app.log-share.summary.empty": {
+    "message": "LogShare did not return a structured summary for these logs."
+  },
+  "app.log-share.summary.failed": {
+    "message": "Could not load the LogShare summary: {message}"
+  },
+  "app.log-share.summary.information": {
+    "message": "Information"
+  },
+  "app.log-share.summary.loading": {
+    "message": "Loading structured summary..."
+  },
+  "app.log-share.summary.no-storage": {
+    "message": "Structured summary is unavailable while no-storage mode is enabled."
+  },
+  "app.log-share.summary.problems": {
+    "message": "Problems"
+  },
+  "app.log-share.summary.title": {
+    "message": "LogShare analysis"
   },
   "app.memory-display.available": {
     "message": "{memory} available"
@@ -4917,7 +5919,7 @@
     "message": "Analyzing the logs from this launch..."
   },
   "app.minecraft-crash.body": {
-    "message": "Do not send a screenshot of this window when asking for help. Export the error report instead so the crash report, game logs, debug log, and JVM details can be checked together."
+    "message": "Export the error report or share the diagnostic link when asking for help. Do not send only a screenshot of this window."
   },
   "app.minecraft-crash.copy-link": {
     "message": "Copy link"
@@ -5012,6 +6014,21 @@
   "app.minecraft-crash.launch-failure-hint": {
     "message": "Open the Minecraft logs to view the captured Java output. When asking for help, export and send the complete Minecraft diagnostic package."
   },
+  "app.minecraft-crash.log-file.failed": {
+    "message": "Could not load this log file: {message}"
+  },
+  "app.minecraft-crash.log-file.loading": {
+    "message": "Loading log file..."
+  },
+  "app.minecraft-crash.logs.empty": {
+    "message": "No logs from this launch were found."
+  },
+  "app.minecraft-crash.logs.failed": {
+    "message": "Could not load the crash logs: {message}"
+  },
+  "app.minecraft-crash.logs.loading": {
+    "message": "Loading crash logs..."
+  },
   "app.minecraft-crash.mod-changes-action": {
     "message": "Review the changed Mod files and restore the previous setup manually if the crash started after those changes."
   },
@@ -5072,6 +6089,9 @@
   "app.minecraft-crash.share-failed": {
     "message": "Failed to share the diagnostic"
   },
+  "app.minecraft-crash.share-fallback": {
+    "message": "LogShare is unavailable, so the diagnostic was shared via mclo.gs."
+  },
   "app.minecraft-crash.share-ready": {
     "message": "Diagnostic link is ready to share"
   },
@@ -5085,7 +6105,7 @@
     "message": "Minecraft stopped unexpectedly."
   },
   "app.minecraft-crash.support-hint": {
-    "message": "When asking for help, send the exported ZIP. Do not send only a screenshot of this window because it does not contain the diagnostic evidence."
+    "message": "Share the diagnostic link or exported package instead of only a screenshot."
   },
   "app.minecraft-crash.title": {
     "message": "{instanceName} crashed"
@@ -5095,42 +6115,6 @@
   },
   "app.minecraft.playing-as": {
     "message": "Playing as"
-  },
-  "app.modal.install-to-play.content-required": {
-    "message": "Content required"
-  },
-  "app.modal.install-to-play.header": {
-    "message": "Install to play"
-  },
-  "app.modal.install-to-play.install-button": {
-    "message": "Install"
-  },
-  "app.modal.install-to-play.mod-count": {
-    "message": "{count, plural, one {# mod} other {# mods}}"
-  },
-  "app.modal.install-to-play.required-modpack": {
-    "message": "Required modpack"
-  },
-  "app.modal.install-to-play.server-requires-mods": {
-    "message": "This server requires mods to play. Click Install to set up the required files from Modrinth, then launch directly into the server."
-  },
-  "app.modal.install-to-play.shared-instance": {
-    "message": "Shared instance"
-  },
-  "app.modal.install-to-play.shared-server-instance": {
-    "message": "Shared server instance"
-  },
-  "app.modal.install-to-play.view-contents": {
-    "message": "View contents"
-  },
-  "app.modal.update-to-play.header": {
-    "message": "Update to play"
-  },
-  "app.modal.update-to-play.update-required": {
-    "message": "Update required"
-  },
-  "app.modal.update-to-play.update-required-description": {
-    "message": "An update is required to play {name}. Please update to the latest version to launch the game."
   },
   "app.modpack-install.already-installed": {
     "message": "This version is already installed"
@@ -5220,13 +6204,16 @@
     "message": "Guest"
   },
   "app.multiplayer.hongshi.binary-missing": {
-    "message": "Download the RedStone kernel for this device before creating a room."
+    "message": "The RedStone Online 2 kernel will be installed when you create your first room."
   },
   "app.multiplayer.hongshi.cached": {
     "message": " (cached)"
   },
+  "app.multiplayer.hongshi.cancel": {
+    "message": "Cancel"
+  },
   "app.multiplayer.hongshi.closed": {
-    "message": "The RedStone room has closed. Create a new room to receive a new address."
+    "message": "The RedStone Online 2 room has closed. Create a new room to receive a new address."
   },
   "app.multiplayer.hongshi.create": {
     "message": "Create public room"
@@ -5237,17 +6224,41 @@
   "app.multiplayer.hongshi.detected-port": {
     "message": "{instance} — port {port}"
   },
-  "app.multiplayer.hongshi.download": {
-    "message": "Download RedStone"
+  "app.multiplayer.hongshi.error.build-unavailable": {
+    "message": "The RedStone Online 2 build for this device has not been published yet. Try again later."
   },
-  "app.multiplayer.hongshi.limits": {
-    "message": "Tunnels close after 10 minutes without players or 6 hours total. Maximum 10 players and 10 Mbps shared bandwidth."
+  "app.multiplayer.hongshi.error.install": {
+    "message": "Could not install the RedStone Online 2 kernel. Check your connection and try again."
+  },
+  "app.multiplayer.hongshi.error.invalid-port": {
+    "message": "Enter a local port between 1 and 65535."
+  },
+  "app.multiplayer.hongshi.error.kernel-exit": {
+    "message": "The RedStone Online 2 kernel stopped unexpectedly. Create a new room or open the logs."
+  },
+  "app.multiplayer.hongshi.error.kernel-output": {
+    "message": "The RedStone Online 2 kernel returned an invalid address or output. Open the logs for details."
+  },
+  "app.multiplayer.hongshi.error.kernel-start": {
+    "message": "The RedStone Online 2 kernel could not start a room. Try again or open the logs."
+  },
+  "app.multiplayer.hongshi.error.node-list": {
+    "message": "Could not load relay nodes. Check your connection and refresh the list."
+  },
+  "app.multiplayer.hongshi.error.node-unavailable": {
+    "message": "No relay could create a room. Refresh the nodes or choose another relay."
+  },
+  "app.multiplayer.hongshi.error.unknown": {
+    "message": "Could not create the RedStone Online 2 room. Try again or open the logs."
   },
   "app.multiplayer.hongshi.local-port": {
     "message": "Local Minecraft port"
   },
   "app.multiplayer.hongshi.manual-port": {
     "message": "Enter port manually"
+  },
+  "app.multiplayer.hongshi.no-nodes": {
+    "message": "No relay nodes are listed right now. Refresh the list to try again."
   },
   "app.multiplayer.hongshi.node": {
     "message": "Relay node"
@@ -5259,7 +6270,7 @@
     "message": "{name} — {latency} ms{cached}"
   },
   "app.multiplayer.hongshi.open-logs": {
-    "message": "Open RedStone logs"
+    "message": "Open RedStone Online 2 logs"
   },
   "app.multiplayer.hongshi.port-changed": {
     "message": "Minecraft opened a different LAN port. Restart the tunnel before sharing it."
@@ -5271,7 +6282,7 @@
     "message": "Public address"
   },
   "app.multiplayer.hongshi.public-address-hint": {
-    "message": "Friends can enter this address directly in Minecraft. They do not need RedStone."
+    "message": "Friends can enter this address directly in Minecraft. They do not need RedStone Online 2."
   },
   "app.multiplayer.hongshi.refresh-nodes": {
     "message": "Refresh nodes"
@@ -5286,7 +6297,7 @@
     "message": "unreachable"
   },
   "app.multiplayer.hongshi.unsupported": {
-    "message": "RedStone is not available for this operating system or architecture."
+    "message": "RedStone Online 2 is not available for this operating system or architecture."
   },
   "app.multiplayer.host": {
     "message": "Host"
@@ -5340,7 +6351,7 @@
     "message": "Powered by Terracotta"
   },
   "app.multiplayer.provider.hongshi": {
-    "message": "RedStone"
+    "message": "RedStone Online 2"
   },
   "app.multiplayer.provider.terracotta": {
     "message": "Terracotta"
@@ -5474,11 +6485,17 @@
   "app.navigation.multiplayer": {
     "message": "Multiplayer"
   },
+  "app.navigation.screenshots": {
+    "message": "Screenshots"
+  },
   "app.navigation.skin-selector": {
     "message": "Skin selector"
   },
   "app.navigation.worlds": {
     "message": "Worlds"
+  },
+  "app.notification.error-occurred": {
+    "message": "An error occurred"
   },
   "app.notification.export-error-logs": {
     "message": "Export error logs"
@@ -5556,7 +6573,7 @@
     "message": "Bring your own AI provider"
   },
   "app.onboarding.appearance.description": {
-    "message": "Theme, accent, backgrounds, and window effects all live here. Make the launcher feel familiar."
+    "message": "Theme, accent, custom launcher background, and window effects all live here. Make the launcher feel familiar."
   },
   "app.onboarding.appearance.title": {
     "message": "Set the vibe"
@@ -5706,7 +6723,7 @@
     "message": "Useful tools, built in"
   },
   "app.onboarding.language.description": {
-    "message": "Pick the launcher language and manage translations. No decoder ring required."
+    "message": "Switch the launcher UI language here, or keep System language. Content translation for project pages is configured on this page too."
   },
   "app.onboarding.language.title": {
     "message": "Speak your language"
@@ -5726,6 +6743,12 @@
   "app.onboarding.mascot-alt": {
     "message": "Axolotl guide"
   },
+  "app.onboarding.offline-account.description": {
+    "message": "Open Playing as in the sidebar to add an offline Minecraft account. You may need to sign in with an official Minecraft account on this device first."
+  },
+  "app.onboarding.offline-account.title": {
+    "message": "Offline accounts"
+  },
   "app.onboarding.privacy.description": {
     "message": "Manage anonymous telemetry, Discord Rich Presence, and the Minecraft log analysis service whenever you need to."
   },
@@ -5739,7 +6762,7 @@
     "message": "Do not cook the computer"
   },
   "app.onboarding.settings.description": {
-    "message": "The useful controls live here: launcher preferences, game launch behavior, content downloads, and privacy."
+    "message": "Appearance, language, AI providers, launch defaults, content downloads, and privacy all live here."
   },
   "app.onboarding.settings.title": {
     "message": "Make it yours"
@@ -5774,8 +6797,17 @@
   "app.onboarding.welcome.footer": {
     "message": "Your last next launcher."
   },
+  "app.onboarding.welcome.language-label": {
+    "message": "Language"
+  },
   "app.onboarding.welcome.title": {
     "message": "Everything is ready"
+  },
+  "app.page-path.copied": {
+    "message": "Copied"
+  },
+  "app.page-path.copy": {
+    "message": "Copy page path"
   },
   "app.privacy-consent.continue": {
     "message": "Save and continue"
@@ -5796,13 +6828,34 @@
     "message": "Allow anonymous telemetry"
   },
   "app.privacy-consent.telemetry-description": {
-    "message": "Helps count opted-in installations and diagnose launcher errors using sanitized, limited reports. Full Minecraft logs and account credentials are not uploaded."
+    "message": "Helps count opted-in installations and daily active users. Full Minecraft logs and account credentials are never uploaded."
   },
   "app.privacy-consent.title": {
     "message": "Privacy & security"
   },
-  "app.project.curseforge.loading": {
-    "message": "Loading CurseForge project…"
+  "app.privileged-consent.acknowledge": {
+    "message": "I understand the risks and want to enable privileged link actions"
+  },
+  "app.privileged-consent.confirm": {
+    "message": "Enable"
+  },
+  "app.privileged-consent.danger": {
+    "message": "External links will be able to change settings (theme, launch commands, directories, network options, etc.) and stop running games. You will still confirm each action before it executes."
+  },
+  "app.privileged-consent.title": {
+    "message": "Enable privileged link actions?"
+  },
+  "app.privileged-consent.warning": {
+    "message": "These actions can change security-sensitive settings and stop games"
+  },
+  "app.privileged-modal.applied": {
+    "message": "Privileged link applied"
+  },
+  "app.privileged-modal.no-processes": {
+    "message": "No running game processes for this instance"
+  },
+  "app.privileged-modal.stopped": {
+    "message": "Stop request sent"
   },
   "app.project.curseforge.unavailable-description": {
     "message": "The CurseForge project did not return any data."
@@ -5948,8 +7001,197 @@
   "app.project.versions.start-server": {
     "message": "Create server"
   },
+  "app.remote-announcements.center-title": {
+    "message": "Announcements"
+  },
+  "app.remote-announcements.empty": {
+    "message": "No announcements"
+  },
+  "app.remote-announcements.preview-action": {
+    "message": "Visit website"
+  },
+  "app.remote-announcements.preview-content": {
+    "message": "## Announcement preview\n\nThis is **sample content**, not a published announcement.\n\n- Supports headings, lists, and links\n- Close buttons are always available\n\n> Previewing does not change real announcement read status.\n\n| Type | Display |\n| --- | --- |\n| Modal | Full Markdown content |\n| Popup | Summary, then full content |\n\n[Visit the website](https://axlmc.org)"
+  },
+  "app.remote-announcements.preview-summary": {
+    "message": "This is a local preview. Select View announcement to preview the full Markdown content."
+  },
+  "app.remote-announcements.preview-title": {
+    "message": "Announcement style preview"
+  },
+  "app.remote-announcements.read-all": {
+    "message": "Mark all announcements as read"
+  },
+  "app.remote-announcements.unread": {
+    "message": "Unread"
+  },
+  "app.remote-announcements.view": {
+    "message": "View announcement"
+  },
   "app.restarting": {
     "message": "Restarting..."
+  },
+  "app.screenshots.copied": {
+    "message": "Copied"
+  },
+  "app.screenshots.copy": {
+    "message": "Copy image"
+  },
+  "app.screenshots.delete-description": {
+    "message": "Permanently delete {name}? This action cannot be undone."
+  },
+  "app.screenshots.delete-success": {
+    "message": "Screenshot deleted"
+  },
+  "app.screenshots.delete-title": {
+    "message": "Delete screenshot"
+  },
+  "app.screenshots.deselect": {
+    "message": "Deselect {name}"
+  },
+  "app.screenshots.edit": {
+    "message": "Edit screenshot"
+  },
+  "app.screenshots.empty-description": {
+    "message": "Screenshots you take in-game will appear here."
+  },
+  "app.screenshots.empty-heading": {
+    "message": "No screenshots yet"
+  },
+  "app.screenshots.error-heading": {
+    "message": "Failed to load screenshots"
+  },
+  "app.screenshots.go-to-instance": {
+    "message": "Go to instance"
+  },
+  "app.screenshots.group-by": {
+    "message": "Group by"
+  },
+  "app.screenshots.group.all-screenshots": {
+    "message": "All screenshots"
+  },
+  "app.screenshots.group.collapse": {
+    "message": "Collapse group"
+  },
+  "app.screenshots.group.custom": {
+    "message": "Custom group"
+  },
+  "app.screenshots.group.date": {
+    "message": "Date"
+  },
+  "app.screenshots.group.delete": {
+    "message": "Delete group"
+  },
+  "app.screenshots.group.delete-description": {
+    "message": "Screenshots in this group will become ungrouped."
+  },
+  "app.screenshots.group.edit": {
+    "message": "Edit group name"
+  },
+  "app.screenshots.group.empty": {
+    "message": "Drag and drop to add screenshots."
+  },
+  "app.screenshots.group.expand": {
+    "message": "Expand group"
+  },
+  "app.screenshots.group.instance": {
+    "message": "Instance"
+  },
+  "app.screenshots.group.new": {
+    "message": "New group"
+  },
+  "app.screenshots.group.none": {
+    "message": "No grouping"
+  },
+  "app.screenshots.group.this-month": {
+    "message": "This month"
+  },
+  "app.screenshots.group.this-week": {
+    "message": "This week"
+  },
+  "app.screenshots.group.today": {
+    "message": "Today"
+  },
+  "app.screenshots.group.ungrouped": {
+    "message": "Ungrouped"
+  },
+  "app.screenshots.group.yesterday": {
+    "message": "Yesterday"
+  },
+  "app.screenshots.heading": {
+    "message": "Screenshots"
+  },
+  "app.screenshots.more-actions": {
+    "message": "More actions"
+  },
+  "app.screenshots.no-results-description": {
+    "message": "Try a different search or filter."
+  },
+  "app.screenshots.no-results-heading": {
+    "message": "No matching screenshots"
+  },
+  "app.screenshots.preview.instance-and-date": {
+    "message": "{instance} · {date}"
+  },
+  "app.screenshots.search": {
+    "message": "Search"
+  },
+  "app.screenshots.select": {
+    "message": "Select {name}"
+  },
+  "app.screenshots.selection.aria-label": {
+    "message": "Selected screenshots"
+  },
+  "app.screenshots.selection.delete-description": {
+    "message": "Delete {count, plural, one {# screenshot} other {# screenshots}}? This action cannot be undone."
+  },
+  "app.screenshots.selection.delete-success": {
+    "message": "{count, plural, one {# screenshot deleted} other {# screenshots deleted}}"
+  },
+  "app.screenshots.selection.delete-title": {
+    "message": "Delete selected screenshots"
+  },
+  "app.screenshots.selection.export-zip": {
+    "message": "Export ZIP"
+  },
+  "app.screenshots.selection.global-export-filename": {
+    "message": "Modrinth screenshots.zip"
+  },
+  "app.screenshots.selection.hint": {
+    "message": "Use the checkboxes or Ctrl/Command-click to select, Shift-click for a range, or drag from empty space to select an area."
+  },
+  "app.screenshots.selection.instance-export-filename": {
+    "message": "{instance} screenshots.zip"
+  },
+  "app.screenshots.selection.remove-from-group": {
+    "message": "Remove from group"
+  },
+  "app.screenshots.selection.select-group": {
+    "message": "Select all screenshots in {group}"
+  },
+  "app.screenshots.selection.selected-count": {
+    "message": "{count} selected"
+  },
+  "app.screenshots.selection.zip-archive": {
+    "message": "ZIP archive"
+  },
+  "app.screenshots.show-in-folder": {
+    "message": "Show in folder"
+  },
+  "app.screenshots.skipped-folders": {
+    "message": "{count, plural, one {Skipped # inaccessible instance folder} other {Skipped # inaccessible instance folders}}"
+  },
+  "app.screenshots.sort-by": {
+    "message": "Sort by"
+  },
+  "app.screenshots.sort.name": {
+    "message": "Name"
+  },
+  "app.screenshots.sort.newest": {
+    "message": "Newest"
+  },
+  "app.screenshots.sort.oldest": {
+    "message": "Oldest"
   },
   "app.server.add": {
     "message": "Add"
@@ -5993,8 +7235,8 @@
   "app.servers.card.type": {
     "message": "{type} · {version}"
   },
-  "app.servers.console.command-echo": {
-    "message": "> {command}"
+  "app.servers.console.forge-command-placeholder": {
+    "message": "Send a command - Tab completion supported"
   },
   "app.servers.console.not-running": {
     "message": "The server is not running"
@@ -6091,6 +7333,18 @@
   },
   "app.servers.modpack.unsupported-loader-title": {
     "message": "{loader} servers are not supported yet"
+  },
+  "app.servers.online-mode-warning.body": {
+    "message": "“{server}” has online-mode enabled, but the account you are using (“{account}”) is an offline account. The server will refuse the connection. Start anyway?"
+  },
+  "app.servers.online-mode-warning.cancel": {
+    "message": "Cancel"
+  },
+  "app.servers.online-mode-warning.confirm": {
+    "message": "Start anyway"
+  },
+  "app.servers.online-mode-warning.title": {
+    "message": "This server requires a premium account"
   },
   "app.servers.port.change": {
     "message": "Change port"
@@ -6419,8 +7673,17 @@
   "app.servers.settings.memory": {
     "message": "Memory"
   },
+  "app.servers.settings.memory-mb": {
+    "message": "Memory (MB)"
+  },
   "app.servers.settings.name": {
     "message": "Server name"
+  },
+  "app.servers.settings.pin-home": {
+    "message": "Pin to Home"
+  },
+  "app.servers.settings.pre-launch-hook-hint": {
+    "message": "Runs in the server directory before the server starts. A non-zero exit code cancels the start."
   },
   "app.servers.settings.running-hint": {
     "message": "Your changes will take effect the next time the server starts."
@@ -6540,7 +7803,7 @@
     "message": "Show snapshots"
   },
   "app.servers.wizard.type-heading": {
-    "message": "Choose a server type"
+    "message": "Choose a server core"
   },
   "app.servers.wizard.type-title": {
     "message": "Server type"
@@ -6569,6 +7832,9 @@
   "app.settings.about.copy-qq-group": {
     "message": "Copy group number"
   },
+  "app.settings.about.copying-guidelines": {
+    "message": "Copying guidelines"
+  },
   "app.settings.about.description": {
     "message": "Your last launcher."
   },
@@ -6577,6 +7843,15 @@
   },
   "app.settings.about.development-team": {
     "message": "Development team"
+  },
+  "app.settings.about.easteregg.click-hint": {
+    "message": "Click to open a hidden Mini Game"
+  },
+  "app.settings.about.easteregg.contributors-title": {
+    "message": "Contributor Easter Egg"
+  },
+  "app.settings.about.easteregg.game-title": {
+    "message": "Mini Game"
   },
   "app.settings.about.game.best": {
     "message": "Best: {score}"
@@ -6674,11 +7949,92 @@
   "app.settings.about.repository": {
     "message": "Source code"
   },
-  "app.settings.about.survey": {
-    "message": "Community survey"
+  "app.settings.about.run.apex": {
+    "message": "Apex clear +{score}"
   },
-  "app.settings.about.survey-description": {
-    "message": "Help us improve Axolotl Launcher"
+  "app.settings.about.run.best": {
+    "message": "Best: {score}"
+  },
+  "app.settings.about.run.best-label": {
+    "message": "Best"
+  },
+  "app.settings.about.run.chain": {
+    "message": "Chain!"
+  },
+  "app.settings.about.run.chain-jump": {
+    "message": "Chain jump +{score}"
+  },
+  "app.settings.about.run.combo": {
+    "message": "Combo {count}"
+  },
+  "app.settings.about.run.conduit": {
+    "message": "Conduit power"
+  },
+  "app.settings.about.run.diamond": {
+    "message": "Diamond"
+  },
+  "app.settings.about.run.dolphin": {
+    "message": "Dolphin’s Grace"
+  },
+  "app.settings.about.run.exit": {
+    "message": "Exit game"
+  },
+  "app.settings.about.run.game-over": {
+    "message": "Game over"
+  },
+  "app.settings.about.run.hold-to-jump": {
+    "message": "Short tap for a small hop, hold for a high jump"
+  },
+  "app.settings.about.run.last-stand": {
+    "message": "Last stand +{score}"
+  },
+  "app.settings.about.run.milk": {
+    "message": "Milk"
+  },
+  "app.settings.about.run.new-record": {
+    "message": "New record!"
+  },
+  "app.settings.about.run.poison": {
+    "message": "Poison"
+  },
+  "app.settings.about.run.restart": {
+    "message": "Restart"
+  },
+  "app.settings.about.run.score": {
+    "message": "Score: {score}"
+  },
+  "app.settings.about.run.score-label": {
+    "message": "Score"
+  },
+  "app.settings.about.run.shield": {
+    "message": "Shield"
+  },
+  "app.settings.about.run.slow": {
+    "message": "Slowness"
+  },
+  "app.settings.about.run.slow-fall": {
+    "message": "Slow Falling"
+  },
+  "app.settings.about.run.stew": {
+    "message": "Suspicious Stew"
+  },
+  "app.settings.about.run.streak": {
+    "message": "No damage x{count}"
+  },
+  "app.settings.about.run.swift": {
+    "message": "Swiftness"
+  },
+  "app.settings.about.run.tap-to-start": {
+    "message": "Press Space or click to start"
+  },
+  "app.settings.about.run.title": {
+    "message": "Axolotl run"
+  },
+  "app.settings.about.run.tnt": {
+    "message": "TNT"
+  },
+  "app.settings.about.run.totem": {
+    "message": "Totem of Undying"
   },
   "app.settings.about.test-error": {
     "message": "Trigger test error"
@@ -6731,6 +8087,15 @@
   "app.settings.defaults.java-arguments-placeholder": {
     "message": "Enter Java arguments..."
   },
+  "app.settings.defaults.maximize-window": {
+    "message": "Maximize window"
+  },
+  "app.settings.defaults.maximize-window-description": {
+    "message": "Maximize the Minecraft window when it starts."
+  },
+  "app.settings.defaults.maximize-window.unsupported": {
+    "message": "Not supported on this operating system."
+  },
   "app.settings.defaults.memory": {
     "message": "Memory allocated"
   },
@@ -6761,6 +8126,18 @@
   "app.settings.defaults.pre-launch-placeholder": {
     "message": "Enter pre-launch command..."
   },
+  "app.settings.defaults.sections.after-launch": {
+    "message": "After launch behavior"
+  },
+  "app.settings.defaults.sections.environment": {
+    "message": "Environment variables"
+  },
+  "app.settings.defaults.sections.launch-hooks": {
+    "message": "Launch hooks"
+  },
+  "app.settings.defaults.sections.window-behavior": {
+    "message": "Window behavior"
+  },
   "app.settings.defaults.width": {
     "message": "Width"
   },
@@ -6769,6 +8146,21 @@
   },
   "app.settings.defaults.width-placeholder": {
     "message": "Enter width..."
+  },
+  "app.settings.defaults.window-title.default": {
+    "message": "Default window title"
+  },
+  "app.settings.defaults.window-title.default-description": {
+    "message": "Used when an instance does not provide its own title."
+  },
+  "app.settings.defaults.window-title.default-placeholder": {
+    "message": "Enter the default window title..."
+  },
+  "app.settings.defaults.window-title.enabled": {
+    "message": "Custom Minecraft window title"
+  },
+  "app.settings.defaults.window-title.enabled-description": {
+    "message": "Allow instances to customize the Minecraft window title."
   },
   "app.settings.defaults.wrapper-description": {
     "message": "Wrapper command for launching Minecraft."
@@ -6782,11 +8174,1097 @@
   "app.settings.developer-mode-enabled": {
     "message": "Developer mode enabled."
   },
+  "app.settings.developer.announcement-preview": {
+    "message": "Announcement preview"
+  },
+  "app.settings.developer.announcement-preview-description": {
+    "message": "Preview the real announcement components using local sample content, without fetching or marking real announcements as read."
+  },
+  "app.settings.developer.clear-official-login-marker": {
+    "message": "Clear login record"
+  },
+  "app.settings.developer.feature-flags-section-title": {
+    "message": "Feature flags"
+  },
+  "app.settings.developer.official-login-description": {
+    "message": "Clear the official Minecraft sign-in record. You may need to sign in again before creating or using offline accounts."
+  },
+  "app.settings.developer.official-login-marker-cleared": {
+    "message": "Official Minecraft login record cleared"
+  },
+  "app.settings.developer.official-login-section": {
+    "message": "Official Minecraft login record"
+  },
+  "app.settings.developer.preview-announcement-modal": {
+    "message": "Preview startup modal"
+  },
+  "app.settings.developer.preview-announcement-popup": {
+    "message": "Preview Popup notification"
+  },
+  "app.settings.developer.preview-with-action": {
+    "message": "Include an optional external-link button"
+  },
   "app.settings.downloading": {
     "message": "Downloading v{version}"
   },
+  "app.settings.environment-variables.invalid-format": {
+    "message": "Use NAME=value, separated by spaces. A name and an equals sign are required; the value may be empty or contain more equals signs."
+  },
+  "app.settings.feature-flags.advanced-filters-collapsed": {
+    "message": "Collapse advanced filters by default"
+  },
+  "app.settings.feature-flags.always-show-app-controls": {
+    "message": "Always show app controls"
+  },
+  "app.settings.feature-flags.auto-install-dependencies": {
+    "message": "Automatically install dependencies"
+  },
+  "app.settings.feature-flags.i18n-debug": {
+    "message": "Translation debugging"
+  },
+  "app.settings.feature-flags.page-path": {
+    "message": "Page path"
+  },
+  "app.settings.feature-flags.page-transitions": {
+    "message": "Page transitions"
+  },
+  "app.settings.feature-flags.project-background": {
+    "message": "Project backgrounds"
+  },
   "app.settings.feature-flags.reset-to-default": {
     "message": "Reset to default"
+  },
+  "app.settings.feature-flags.server-project-qa": {
+    "message": "Server project QA"
+  },
+  "app.settings.feature-flags.server-ram-as-bytes-always-on": {
+    "message": "Always show server RAM as bytes"
+  },
+  "app.settings.feature-flags.show-instance-play-time": {
+    "message": "Show instance play time"
+  },
+  "app.settings.feature-flags.show-version-environment-column": {
+    "message": "Show version environment column"
+  },
+  "app.settings.feature-flags.skip-non-essential-warnings": {
+    "message": "Skip non-essential warnings"
+  },
+  "app.settings.feature-flags.skip-unknown-pack-warning": {
+    "message": "Skip unknown pack warnings"
+  },
+  "app.settings.feature-flags.worlds-in-home": {
+    "message": "Worlds on home page"
+  },
+  "app.settings.feature-flags.worlds-tab": {
+    "message": "Worlds tab"
+  },
+  "app.settings.game-options.category.accessibility.description": {
+    "message": "Accessibility preferences"
+  },
+  "app.settings.game-options.category.accessibility.label": {
+    "message": "Accessibility"
+  },
+  "app.settings.game-options.category.chat.description": {
+    "message": "Chat visibility and appearance"
+  },
+  "app.settings.game-options.category.chat.label": {
+    "message": "Chat"
+  },
+  "app.settings.game-options.category.controls.description": {
+    "message": "Mouse, movement, and key bindings"
+  },
+  "app.settings.game-options.category.controls.label": {
+    "message": "Controls"
+  },
+  "app.settings.game-options.category.custom.description": {
+    "message": "Settings added by mods"
+  },
+  "app.settings.game-options.category.custom.label": {
+    "message": "Custom settings"
+  },
+  "app.settings.game-options.category.language.description": {
+    "message": "Game language"
+  },
+  "app.settings.game-options.category.language.label": {
+    "message": "Language"
+  },
+  "app.settings.game-options.category.music-and-sound.description": {
+    "message": "Volume and audio preferences"
+  },
+  "app.settings.game-options.category.music-and-sound.label": {
+    "message": "Music and sound"
+  },
+  "app.settings.game-options.category.online.description": {
+    "message": "Online and Realms preferences"
+  },
+  "app.settings.game-options.category.online.label": {
+    "message": "Online"
+  },
+  "app.settings.game-options.category.skin-customization.description": {
+    "message": "Skin layers and main hand"
+  },
+  "app.settings.game-options.category.skin-customization.label": {
+    "message": "Skin customization"
+  },
+  "app.settings.game-options.category.video.description": {
+    "message": "Camera and display settings"
+  },
+  "app.settings.game-options.category.video.label": {
+    "message": "Video"
+  },
+  "app.settings.game-options.choice.all": {
+    "message": "All"
+  },
+  "app.settings.game-options.choice.balanced": {
+    "message": "Balanced"
+  },
+  "app.settings.game-options.choice.by-player": {
+    "message": "By player"
+  },
+  "app.settings.game-options.choice.chat": {
+    "message": "Chat"
+  },
+  "app.settings.game-options.choice.commands-only": {
+    "message": "Commands only"
+  },
+  "app.settings.game-options.choice.constant": {
+    "message": "Constant"
+  },
+  "app.settings.game-options.choice.crosshair": {
+    "message": "Crosshair"
+  },
+  "app.settings.game-options.choice.custom": {
+    "message": "Custom"
+  },
+  "app.settings.game-options.choice.decreased": {
+    "message": "Decreased"
+  },
+  "app.settings.game-options.choice.default": {
+    "message": "Default"
+  },
+  "app.settings.game-options.choice.fabulous": {
+    "message": "Fabulous"
+  },
+  "app.settings.game-options.choice.fancy": {
+    "message": "Fancy"
+  },
+  "app.settings.game-options.choice.far": {
+    "message": "Far"
+  },
+  "app.settings.game-options.choice.fast": {
+    "message": "Fast"
+  },
+  "app.settings.game-options.choice.frequent": {
+    "message": "Frequent"
+  },
+  "app.settings.game-options.choice.hidden": {
+    "message": "Hidden"
+  },
+  "app.settings.game-options.choice.hotbar": {
+    "message": "Hotbar"
+  },
+  "app.settings.game-options.choice.left": {
+    "message": "Left"
+  },
+  "app.settings.game-options.choice.limited": {
+    "message": "Limited"
+  },
+  "app.settings.game-options.choice.max-fps": {
+    "message": "Max FPS"
+  },
+  "app.settings.game-options.choice.maximum": {
+    "message": "Maximum"
+  },
+  "app.settings.game-options.choice.minimal": {
+    "message": "Minimal"
+  },
+  "app.settings.game-options.choice.minimum": {
+    "message": "Minimum"
+  },
+  "app.settings.game-options.choice.nearby": {
+    "message": "Nearby"
+  },
+  "app.settings.game-options.choice.never": {
+    "message": "Never"
+  },
+  "app.settings.game-options.choice.none": {
+    "message": "None"
+  },
+  "app.settings.game-options.choice.normal": {
+    "message": "Normal"
+  },
+  "app.settings.game-options.choice.off": {
+    "message": "Off"
+  },
+  "app.settings.game-options.choice.on": {
+    "message": "On"
+  },
+  "app.settings.game-options.choice.opengl": {
+    "message": "OpenGL"
+  },
+  "app.settings.game-options.choice.pause": {
+    "message": "Pause menu"
+  },
+  "app.settings.game-options.choice.pause-and-toast": {
+    "message": "Pause menu and toast"
+  },
+  "app.settings.game-options.choice.power-saver": {
+    "message": "Power saver"
+  },
+  "app.settings.game-options.choice.right": {
+    "message": "Right"
+  },
+  "app.settings.game-options.choice.short": {
+    "message": "Short"
+  },
+  "app.settings.game-options.choice.shown": {
+    "message": "Shown"
+  },
+  "app.settings.game-options.choice.system": {
+    "message": "System"
+  },
+  "app.settings.game-options.choice.tiny": {
+    "message": "Tiny"
+  },
+  "app.settings.game-options.choice.vulkan": {
+    "message": "Vulkan"
+  },
+  "app.settings.game-options.choice.when-minimized": {
+    "message": "When minimized"
+  },
+  "app.settings.game-options.choice.while-afk": {
+    "message": "While AFK"
+  },
+  "app.settings.game-options.compatibility.none": {
+    "message": "Some of your instances cannot use this setting"
+  },
+  "app.settings.game-options.compatibility.reason.launcher-controlled": {
+    "message": "This setting is managed by Modrinth’s launch settings."
+  },
+  "app.settings.game-options.custom-value.placeholder": {
+    "message": "Enter a value"
+  },
+  "app.settings.game-options.keybind.assigned-status": {
+    "message": "{setting} is now bound to {binding}."
+  },
+  "app.settings.game-options.keybind.cancelled-status": {
+    "message": "Key binding change cancelled."
+  },
+  "app.settings.game-options.keybind.change": {
+    "message": "{setting}: {binding}. Activate to change the binding."
+  },
+  "app.settings.game-options.keybind.choose": {
+    "message": "Choose a key"
+  },
+  "app.settings.game-options.keybind.conflict-description": {
+    "message": "This is already used by {settings}."
+  },
+  "app.settings.game-options.keybind.key.arrow-down": {
+    "message": "Down Arrow"
+  },
+  "app.settings.game-options.keybind.key.arrow-left": {
+    "message": "Left Arrow"
+  },
+  "app.settings.game-options.keybind.key.arrow-right": {
+    "message": "Right Arrow"
+  },
+  "app.settings.game-options.keybind.key.arrow-up": {
+    "message": "Up Arrow"
+  },
+  "app.settings.game-options.keybind.key.backspace": {
+    "message": "Backspace"
+  },
+  "app.settings.game-options.keybind.key.caps-lock": {
+    "message": "Caps Lock"
+  },
+  "app.settings.game-options.keybind.key.delete": {
+    "message": "Delete"
+  },
+  "app.settings.game-options.keybind.key.end": {
+    "message": "End"
+  },
+  "app.settings.game-options.keybind.key.enter": {
+    "message": "Enter"
+  },
+  "app.settings.game-options.keybind.key.escape": {
+    "message": "Escape"
+  },
+  "app.settings.game-options.keybind.key.home": {
+    "message": "Home"
+  },
+  "app.settings.game-options.keybind.key.insert": {
+    "message": "Insert"
+  },
+  "app.settings.game-options.keybind.key.keypad-key": {
+    "message": "Numpad {key}"
+  },
+  "app.settings.game-options.keybind.key.left-alt": {
+    "message": "Left Alt"
+  },
+  "app.settings.game-options.keybind.key.left-command": {
+    "message": "Left Command"
+  },
+  "app.settings.game-options.keybind.key.left-control": {
+    "message": "Left Ctrl"
+  },
+  "app.settings.game-options.keybind.key.left-shift": {
+    "message": "Left Shift"
+  },
+  "app.settings.game-options.keybind.key.left-super": {
+    "message": "Left Super"
+  },
+  "app.settings.game-options.keybind.key.menu": {
+    "message": "Menu"
+  },
+  "app.settings.game-options.keybind.key.num-lock": {
+    "message": "Num Lock"
+  },
+  "app.settings.game-options.keybind.key.page-down": {
+    "message": "Page Down"
+  },
+  "app.settings.game-options.keybind.key.page-up": {
+    "message": "Page Up"
+  },
+  "app.settings.game-options.keybind.key.pause": {
+    "message": "Pause"
+  },
+  "app.settings.game-options.keybind.key.print-screen": {
+    "message": "Print Screen"
+  },
+  "app.settings.game-options.keybind.key.right-alt": {
+    "message": "Right Alt"
+  },
+  "app.settings.game-options.keybind.key.right-command": {
+    "message": "Right Command"
+  },
+  "app.settings.game-options.keybind.key.right-control": {
+    "message": "Right Ctrl"
+  },
+  "app.settings.game-options.keybind.key.right-shift": {
+    "message": "Right Shift"
+  },
+  "app.settings.game-options.keybind.key.right-super": {
+    "message": "Right Super"
+  },
+  "app.settings.game-options.keybind.key.scroll-lock": {
+    "message": "Scroll Lock"
+  },
+  "app.settings.game-options.keybind.key.space": {
+    "message": "Space"
+  },
+  "app.settings.game-options.keybind.key.tab": {
+    "message": "Tab"
+  },
+  "app.settings.game-options.keybind.key.unbound": {
+    "message": "Unbound"
+  },
+  "app.settings.game-options.keybind.key.unknown": {
+    "message": "Unknown key"
+  },
+  "app.settings.game-options.keybind.listen": {
+    "message": "Press a key…"
+  },
+  "app.settings.game-options.keybind.listening-status": {
+    "message": "Listening for a key or mouse button. Press Escape to clear this binding."
+  },
+  "app.settings.game-options.keybind.mixed": {
+    "message": "Different across instances"
+  },
+  "app.settings.game-options.keybind.modifier.alt": {
+    "message": "Alt"
+  },
+  "app.settings.game-options.keybind.modifier.command": {
+    "message": "Command"
+  },
+  "app.settings.game-options.keybind.modifier.control": {
+    "message": "Ctrl"
+  },
+  "app.settings.game-options.keybind.modifier.shift": {
+    "message": "Shift"
+  },
+  "app.settings.game-options.keybind.modifier.super": {
+    "message": "Super"
+  },
+  "app.settings.game-options.keybind.mouse.button": {
+    "message": "Mouse {button}"
+  },
+  "app.settings.game-options.keybind.mouse.left": {
+    "message": "Left Mouse"
+  },
+  "app.settings.game-options.keybind.mouse.middle": {
+    "message": "Middle Mouse"
+  },
+  "app.settings.game-options.keybind.mouse.right": {
+    "message": "Right Mouse"
+  },
+  "app.settings.game-options.keybind.recording-label": {
+    "message": "{setting}: listening for a key or mouse button. Press Escape to clear this binding."
+  },
+  "app.settings.game-options.keybind.scancode": {
+    "message": "Scancode {code}"
+  },
+  "app.settings.game-options.keybind.unsupported-status": {
+    "message": "That input cannot be used by Minecraft. Press another key."
+  },
+  "app.settings.game-options.setting.advanced-opengl.label": {
+    "message": "Advanced OpenGL"
+  },
+  "app.settings.game-options.setting.allow-cursor-changes.label": {
+    "message": "Allow cursor changes"
+  },
+  "app.settings.game-options.setting.allow-server-listing.description": {
+    "message": "Allow the player's name to appear in server listings."
+  },
+  "app.settings.game-options.setting.allow-server-listing.label": {
+    "message": "Server listings"
+  },
+  "app.settings.game-options.setting.alternate-blocks.label": {
+    "message": "Alternate blocks"
+  },
+  "app.settings.game-options.setting.ambient-occlusion.label": {
+    "message": "Smooth lighting"
+  },
+  "app.settings.game-options.setting.ambient-volume.label": {
+    "message": "Ambient/Environment"
+  },
+  "app.settings.game-options.setting.anaglyph-3d.label": {
+    "message": "3D anaglyph"
+  },
+  "app.settings.game-options.setting.anisotropic-filtering.label": {
+    "message": "Anisotropic filtering"
+  },
+  "app.settings.game-options.setting.anisotropy.label": {
+    "message": "Anisotropy"
+  },
+  "app.settings.game-options.setting.attack-indicator.label": {
+    "message": "Attack indicator"
+  },
+  "app.settings.game-options.setting.auto-jump.description": {
+    "message": "Automatically jump up one-block-high obstacles."
+  },
+  "app.settings.game-options.setting.auto-jump.label": {
+    "message": "Auto-jump"
+  },
+  "app.settings.game-options.setting.auto-suggestions.label": {
+    "message": "Command suggestions"
+  },
+  "app.settings.game-options.setting.autosave-indicator.label": {
+    "message": "Autosave indicator"
+  },
+  "app.settings.game-options.setting.biome-blend-radius.description": {
+    "message": "The distance over which biome colors transition."
+  },
+  "app.settings.game-options.setting.biome-blend-radius.label": {
+    "message": "Biome blend"
+  },
+  "app.settings.game-options.setting.blocks-volume.label": {
+    "message": "Blocks"
+  },
+  "app.settings.game-options.setting.brightness.label": {
+    "message": "Brightness"
+  },
+  "app.settings.game-options.setting.cape.description": {
+    "message": "Show the player's cape, including its elytra texture."
+  },
+  "app.settings.game-options.setting.cape.label": {
+    "message": "Cape"
+  },
+  "app.settings.game-options.setting.chat-background-only.label": {
+    "message": "Chat background only"
+  },
+  "app.settings.game-options.setting.chat-colors.label": {
+    "message": "Chat colors"
+  },
+  "app.settings.game-options.setting.chat-delay.label": {
+    "message": "Chat delay"
+  },
+  "app.settings.game-options.setting.chat-line-spacing.label": {
+    "message": "Chat line spacing"
+  },
+  "app.settings.game-options.setting.chat-links-prompt.description": {
+    "message": "Ask before opening links from chat."
+  },
+  "app.settings.game-options.setting.chat-links-prompt.label": {
+    "message": "Prompt on links"
+  },
+  "app.settings.game-options.setting.chat-links.description": {
+    "message": "Allow web links in chat to be opened."
+  },
+  "app.settings.game-options.setting.chat-links.label": {
+    "message": "Web links"
+  },
+  "app.settings.game-options.setting.chat-opacity.description": {
+    "message": "The opacity of chat text."
+  },
+  "app.settings.game-options.setting.chat-opacity.label": {
+    "message": "Chat opacity"
+  },
+  "app.settings.game-options.setting.chat-preview.label": {
+    "message": "Chat preview"
+  },
+  "app.settings.game-options.setting.chat-scale.label": {
+    "message": "Chat scale"
+  },
+  "app.settings.game-options.setting.chat-visibility.label": {
+    "message": "Chat visibility"
+  },
+  "app.settings.game-options.setting.chat-width.label": {
+    "message": "Chat width"
+  },
+  "app.settings.game-options.setting.chunk-fade-time.label": {
+    "message": "Chunk fade time"
+  },
+  "app.settings.game-options.setting.cloud-range.label": {
+    "message": "Cloud distance"
+  },
+  "app.settings.game-options.setting.clouds.label": {
+    "message": "Clouds"
+  },
+  "app.settings.game-options.setting.ctrl-click-right-click.label": {
+    "message": "Control-click as right-click"
+  },
+  "app.settings.game-options.setting.cutout-leaves.label": {
+    "message": "Cutout leaves"
+  },
+  "app.settings.game-options.setting.damage-tilt.label": {
+    "message": "Damage tilt"
+  },
+  "app.settings.game-options.setting.dark-splash.description": {
+    "message": "Change the Mojang Studios loading screen from red to black."
+  },
+  "app.settings.game-options.setting.dark-splash.label": {
+    "message": "Monochrome logo"
+  },
+  "app.settings.game-options.setting.darkness-pulsing.label": {
+    "message": "Darkness pulsing"
+  },
+  "app.settings.game-options.setting.debug-gui-scale.label": {
+    "message": "Debug GUI scale"
+  },
+  "app.settings.game-options.setting.directional-audio.label": {
+    "message": "Directional audio"
+  },
+  "app.settings.game-options.setting.discrete-mouse-scroll.description": {
+    "message": "Treat each mouse-wheel input as a single scroll step."
+  },
+  "app.settings.game-options.setting.discrete-mouse-scroll.label": {
+    "message": "Discrete scrolling"
+  },
+  "app.settings.game-options.setting.entity-distance.label": {
+    "message": "Entity distance"
+  },
+  "app.settings.game-options.setting.entity-shadows.label": {
+    "message": "Entity shadows"
+  },
+  "app.settings.game-options.setting.exclusive-fullscreen.label": {
+    "message": "Exclusive fullscreen"
+  },
+  "app.settings.game-options.setting.extra-telemetry.label": {
+    "message": "Optional telemetry"
+  },
+  "app.settings.game-options.setting.focused-chat-height.label": {
+    "message": "Focused chat height"
+  },
+  "app.settings.game-options.setting.force-unicode-font.label": {
+    "message": "Force Unicode font"
+  },
+  "app.settings.game-options.setting.fov-effects.label": {
+    "message": "FOV effects"
+  },
+  "app.settings.game-options.setting.fov.label": {
+    "message": "Field of view"
+  },
+  "app.settings.game-options.setting.fullscreen.label": {
+    "message": "Fullscreen"
+  },
+  "app.settings.game-options.setting.glint-speed.label": {
+    "message": "Glint speed"
+  },
+  "app.settings.game-options.setting.glint-strength.label": {
+    "message": "Glint strength"
+  },
+  "app.settings.game-options.setting.graphics-backend.label": {
+    "message": "Graphics backend"
+  },
+  "app.settings.game-options.setting.graphics.description": {
+    "message": "Controls visual quality and performance."
+  },
+  "app.settings.game-options.setting.graphics.label": {
+    "message": "Graphics"
+  },
+  "app.settings.game-options.setting.gui-scale.description": {
+    "message": "The size of the game interface and HUD."
+  },
+  "app.settings.game-options.setting.gui-scale.label": {
+    "message": "GUI scale"
+  },
+  "app.settings.game-options.setting.hat.description": {
+    "message": "Show the hat skin layer."
+  },
+  "app.settings.game-options.setting.hat.label": {
+    "message": "Hat"
+  },
+  "app.settings.game-options.setting.held-item-tooltips.label": {
+    "message": "Held item tooltips"
+  },
+  "app.settings.game-options.setting.hide-lightning-flashes.label": {
+    "message": "Hide lightning flashes"
+  },
+  "app.settings.game-options.setting.hide-matched-names.label": {
+    "message": "Hide matched names"
+  },
+  "app.settings.game-options.setting.hide-server-address.label": {
+    "message": "Hide server address"
+  },
+  "app.settings.game-options.setting.hide-splash-texts.label": {
+    "message": "Hide splash texts"
+  },
+  "app.settings.game-options.setting.high-contrast-outline.label": {
+    "message": "High contrast block outline"
+  },
+  "app.settings.game-options.setting.high-contrast.description": {
+    "message": "Enhance the contrast of interface elements."
+  },
+  "app.settings.game-options.setting.high-contrast.label": {
+    "message": "High contrast"
+  },
+  "app.settings.game-options.setting.hostile-volume.label": {
+    "message": "Hostile creatures"
+  },
+  "app.settings.game-options.setting.improved-transparency.label": {
+    "message": "Improved transparency"
+  },
+  "app.settings.game-options.setting.in-game-notifications.label": {
+    "message": "In-game notifications"
+  },
+  "app.settings.game-options.setting.inactivity-framerate-limit.label": {
+    "message": "Reduced framerate"
+  },
+  "app.settings.game-options.setting.invert-horizontal-mouse.label": {
+    "message": "Invert horizontal mouse"
+  },
+  "app.settings.game-options.setting.invert-mouse.description": {
+    "message": "Invert vertical mouse movement."
+  },
+  "app.settings.game-options.setting.invert-mouse.label": {
+    "message": "Invert mouse"
+  },
+  "app.settings.game-options.setting.jacket.description": {
+    "message": "Show the jacket skin layer."
+  },
+  "app.settings.game-options.setting.jacket.label": {
+    "message": "Jacket"
+  },
+  "app.settings.game-options.setting.japanese-glyph-variants.label": {
+    "message": "Japanese glyph variants"
+  },
+  "app.settings.game-options.setting.key-advancements.label": {
+    "message": "Advancements"
+  },
+  "app.settings.game-options.setting.key-attack.label": {
+    "message": "Attack"
+  },
+  "app.settings.game-options.setting.key-back.label": {
+    "message": "Move backward"
+  },
+  "app.settings.game-options.setting.key-chat.label": {
+    "message": "Open chat"
+  },
+  "app.settings.game-options.setting.key-command.label": {
+    "message": "Command"
+  },
+  "app.settings.game-options.setting.key-debug-advanced-tooltips.label": {
+    "message": "Show advanced tooltips"
+  },
+  "app.settings.game-options.setting.key-debug-chunk-borders.label": {
+    "message": "Show chunk borders"
+  },
+  "app.settings.game-options.setting.key-debug-clear-chat.label": {
+    "message": "Clear chat"
+  },
+  "app.settings.game-options.setting.key-debug-copy-location.label": {
+    "message": "Copy location"
+  },
+  "app.settings.game-options.setting.key-debug-copy-recreate-command.label": {
+    "message": "Copy recreate command"
+  },
+  "app.settings.game-options.setting.key-debug-crash.label": {
+    "message": "Trigger debug crash"
+  },
+  "app.settings.game-options.setting.key-debug-dump-dynamic-textures.label": {
+    "message": "Dump dynamic textures"
+  },
+  "app.settings.game-options.setting.key-debug-dump-version.label": {
+    "message": "Dump version"
+  },
+  "app.settings.game-options.setting.key-debug-focus-pause.label": {
+    "message": "Pause on lost focus"
+  },
+  "app.settings.game-options.setting.key-debug-fps-charts.label": {
+    "message": "FPS charts"
+  },
+  "app.settings.game-options.setting.key-debug-hitboxes.label": {
+    "message": "Show hitboxes"
+  },
+  "app.settings.game-options.setting.key-debug-improved-transparency.label": {
+    "message": "Improved transparency debug view"
+  },
+  "app.settings.game-options.setting.key-debug-lightmap-texture.label": {
+    "message": "Lightmap texture"
+  },
+  "app.settings.game-options.setting.key-debug-modifier.label": {
+    "message": "Debug modifier"
+  },
+  "app.settings.game-options.setting.key-debug-network-charts.label": {
+    "message": "Network charts"
+  },
+  "app.settings.game-options.setting.key-debug-options.label": {
+    "message": "Debug options"
+  },
+  "app.settings.game-options.setting.key-debug-overlay.label": {
+    "message": "Debug overlay"
+  },
+  "app.settings.game-options.setting.key-debug-profiling-chart.label": {
+    "message": "Profiling chart"
+  },
+  "app.settings.game-options.setting.key-debug-profiling.label": {
+    "message": "Start profiling"
+  },
+  "app.settings.game-options.setting.key-debug-reload-chunks.label": {
+    "message": "Reload chunks"
+  },
+  "app.settings.game-options.setting.key-debug-reload-resource-packs.label": {
+    "message": "Reload resource packs"
+  },
+  "app.settings.game-options.setting.key-debug-spectate.label": {
+    "message": "Spectate entity"
+  },
+  "app.settings.game-options.setting.key-debug-switch-game-mode.label": {
+    "message": "Switch game mode"
+  },
+  "app.settings.game-options.setting.key-drop.label": {
+    "message": "Drop item"
+  },
+  "app.settings.game-options.setting.key-forward.label": {
+    "message": "Move forward"
+  },
+  "app.settings.game-options.setting.key-friends.label": {
+    "message": "Friends"
+  },
+  "app.settings.game-options.setting.key-fullscreen.label": {
+    "message": "Toggle fullscreen"
+  },
+  "app.settings.game-options.setting.key-hotbar-1.label": {
+    "message": "Hotbar 1"
+  },
+  "app.settings.game-options.setting.key-hotbar-2.label": {
+    "message": "Hotbar 2"
+  },
+  "app.settings.game-options.setting.key-hotbar-3.label": {
+    "message": "Hotbar 3"
+  },
+  "app.settings.game-options.setting.key-hotbar-4.label": {
+    "message": "Hotbar 4"
+  },
+  "app.settings.game-options.setting.key-hotbar-5.label": {
+    "message": "Hotbar 5"
+  },
+  "app.settings.game-options.setting.key-hotbar-6.label": {
+    "message": "Hotbar 6"
+  },
+  "app.settings.game-options.setting.key-hotbar-7.label": {
+    "message": "Hotbar 7"
+  },
+  "app.settings.game-options.setting.key-hotbar-8.label": {
+    "message": "Hotbar 8"
+  },
+  "app.settings.game-options.setting.key-hotbar-9.label": {
+    "message": "Hotbar 9"
+  },
+  "app.settings.game-options.setting.key-inventory.label": {
+    "message": "Inventory"
+  },
+  "app.settings.game-options.setting.key-jump.label": {
+    "message": "Jump"
+  },
+  "app.settings.game-options.setting.key-left.label": {
+    "message": "Strafe left"
+  },
+  "app.settings.game-options.setting.key-load-toolbar.label": {
+    "message": "Load toolbar"
+  },
+  "app.settings.game-options.setting.key-perspective.label": {
+    "message": "Change perspective"
+  },
+  "app.settings.game-options.setting.key-pick-item.label": {
+    "message": "Pick block"
+  },
+  "app.settings.game-options.setting.key-player-list.label": {
+    "message": "Player list"
+  },
+  "app.settings.game-options.setting.key-quick-actions.label": {
+    "message": "Quick actions"
+  },
+  "app.settings.game-options.setting.key-right.label": {
+    "message": "Strafe right"
+  },
+  "app.settings.game-options.setting.key-save-toolbar.label": {
+    "message": "Save toolbar"
+  },
+  "app.settings.game-options.setting.key-screenshot.label": {
+    "message": "Screenshot"
+  },
+  "app.settings.game-options.setting.key-smooth-camera.label": {
+    "message": "Toggle cinematic camera"
+  },
+  "app.settings.game-options.setting.key-sneak.label": {
+    "message": "Sneak"
+  },
+  "app.settings.game-options.setting.key-social-interactions.label": {
+    "message": "Social interactions"
+  },
+  "app.settings.game-options.setting.key-spectator-hotbar.label": {
+    "message": "Spectator hotbar"
+  },
+  "app.settings.game-options.setting.key-spectator-outlines.label": {
+    "message": "Highlight spectators"
+  },
+  "app.settings.game-options.setting.key-sprint.label": {
+    "message": "Sprint"
+  },
+  "app.settings.game-options.setting.key-swap-offhand.label": {
+    "message": "Swap offhand"
+  },
+  "app.settings.game-options.setting.key-toggle-gui.label": {
+    "message": "Toggle HUD"
+  },
+  "app.settings.game-options.setting.key-toggle-spectator-shader.label": {
+    "message": "Toggle spectator shader"
+  },
+  "app.settings.game-options.setting.key-use.label": {
+    "message": "Use item"
+  },
+  "app.settings.game-options.setting.language.label": {
+    "message": "Language"
+  },
+  "app.settings.game-options.setting.left-pants-leg.label": {
+    "message": "Left pants leg"
+  },
+  "app.settings.game-options.setting.left-sleeve.label": {
+    "message": "Left sleeve"
+  },
+  "app.settings.game-options.setting.legacy-framerate-limit.label": {
+    "message": "Framerate limit"
+  },
+  "app.settings.game-options.setting.legacy-view-distance.label": {
+    "message": "View distance"
+  },
+  "app.settings.game-options.setting.mac-fullscreen-menu.label": {
+    "message": "Show macOS menu in fullscreen"
+  },
+  "app.settings.game-options.setting.main-hand.description": {
+    "message": "Choose whether the main hand is left or right."
+  },
+  "app.settings.game-options.setting.main-hand.label": {
+    "message": "Main hand"
+  },
+  "app.settings.game-options.setting.master-volume.label": {
+    "message": "Master volume"
+  },
+  "app.settings.game-options.setting.max-framerate.label": {
+    "message": "Maximum framerate"
+  },
+  "app.settings.game-options.setting.menu-background-blur.label": {
+    "message": "Menu background blur"
+  },
+  "app.settings.game-options.setting.mipmap-levels.description": {
+    "message": "Texture smoothing at a distance."
+  },
+  "app.settings.game-options.setting.mipmap-levels.label": {
+    "message": "Mipmap levels"
+  },
+  "app.settings.game-options.setting.mouse-wheel-sensitivity.label": {
+    "message": "Mouse wheel sensitivity"
+  },
+  "app.settings.game-options.setting.music-frequency.label": {
+    "message": "Music frequency"
+  },
+  "app.settings.game-options.setting.music-toast.description": {
+    "message": "Choose whether music titles appear in the pause menu and as toasts."
+  },
+  "app.settings.game-options.setting.music-toast.label": {
+    "message": "Music notification"
+  },
+  "app.settings.game-options.setting.music-volume.label": {
+    "message": "Music"
+  },
+  "app.settings.game-options.setting.narrator-hotkey.label": {
+    "message": "Narrator hotkey"
+  },
+  "app.settings.game-options.setting.narrator.description": {
+    "message": "Choose what the narrator reads."
+  },
+  "app.settings.game-options.setting.narrator.label": {
+    "message": "Narrator"
+  },
+  "app.settings.game-options.setting.neutral-volume.label": {
+    "message": "Friendly creatures"
+  },
+  "app.settings.game-options.setting.notification-time.description": {
+    "message": "How long toast notifications remain visible."
+  },
+  "app.settings.game-options.setting.notification-time.label": {
+    "message": "Notification time"
+  },
+  "app.settings.game-options.setting.operator-items-tab.label": {
+    "message": "Operator items tab"
+  },
+  "app.settings.game-options.setting.panorama-speed.label": {
+    "message": "Panorama speed"
+  },
+  "app.settings.game-options.setting.particles.label": {
+    "message": "Particles"
+  },
+  "app.settings.game-options.setting.players-volume.label": {
+    "message": "Players"
+  },
+  "app.settings.game-options.setting.prioritize-chunk-updates.label": {
+    "message": "Prioritize chunk updates"
+  },
+  "app.settings.game-options.setting.quit-shortcuts.label": {
+    "message": "Quit shortcuts"
+  },
+  "app.settings.game-options.setting.raw-mouse-input.label": {
+    "message": "Raw mouse input"
+  },
+  "app.settings.game-options.setting.realms-notifications.label": {
+    "message": "Realms notifications"
+  },
+  "app.settings.game-options.setting.record-volume.label": {
+    "message": "Jukebox/Note Blocks"
+  },
+  "app.settings.game-options.setting.reduced-debug-info.label": {
+    "message": "Reduced debug information"
+  },
+  "app.settings.game-options.setting.render-distance.label": {
+    "message": "Render distance"
+  },
+  "app.settings.game-options.setting.right-pants-leg.label": {
+    "message": "Right pants leg"
+  },
+  "app.settings.game-options.setting.right-sleeve.label": {
+    "message": "Right sleeve"
+  },
+  "app.settings.game-options.setting.rotate-with-minecart.label": {
+    "message": "Rotate with minecart"
+  },
+  "app.settings.game-options.setting.save-chat-drafts.label": {
+    "message": "Save chat drafts"
+  },
+  "app.settings.game-options.setting.screen-effects.label": {
+    "message": "Screen effects"
+  },
+  "app.settings.game-options.setting.secure-chat-only.label": {
+    "message": "Only show secure chat"
+  },
+  "app.settings.game-options.setting.sensitivity.label": {
+    "message": "Mouse sensitivity"
+  },
+  "app.settings.game-options.setting.server-textures.label": {
+    "message": "Server textures"
+  },
+  "app.settings.game-options.setting.share-presence.label": {
+    "message": "Share presence"
+  },
+  "app.settings.game-options.setting.simulation-distance.description": {
+    "message": "How far away entities update and blocks and fluids tick."
+  },
+  "app.settings.game-options.setting.simulation-distance.label": {
+    "message": "Simulation distance"
+  },
+  "app.settings.game-options.setting.snooper.label": {
+    "message": "Snooper"
+  },
+  "app.settings.game-options.setting.sprint-window.label": {
+    "message": "Sprint window"
+  },
+  "app.settings.game-options.setting.subtitles.description": {
+    "message": "Show captions for sounds played in the game."
+  },
+  "app.settings.game-options.setting.subtitles.label": {
+    "message": "Subtitles"
+  },
+  "app.settings.game-options.setting.text-background-opacity.label": {
+    "message": "Text background opacity"
+  },
+  "app.settings.game-options.setting.texture-filtering.label": {
+    "message": "Texture filtering"
+  },
+  "app.settings.game-options.setting.toggle-attack.label": {
+    "message": "Toggle attack"
+  },
+  "app.settings.game-options.setting.toggle-crouch.description": {
+    "message": "Press once to remain crouched."
+  },
+  "app.settings.game-options.setting.toggle-crouch.label": {
+    "message": "Toggle crouch"
+  },
+  "app.settings.game-options.setting.toggle-sprint.description": {
+    "message": "Press once to remain sprinting."
+  },
+  "app.settings.game-options.setting.toggle-sprint.label": {
+    "message": "Toggle sprint"
+  },
+  "app.settings.game-options.setting.toggle-use.label": {
+    "message": "Toggle use"
+  },
+  "app.settings.game-options.setting.touchscreen.label": {
+    "message": "Touchscreen mode"
+  },
+  "app.settings.game-options.setting.ui-volume.label": {
+    "message": "UI"
+  },
+  "app.settings.game-options.setting.unfocused-chat-height.label": {
+    "message": "Unfocused chat height"
+  },
+  "app.settings.game-options.setting.use-vbo.label": {
+    "message": "Use VBOs"
+  },
+  "app.settings.game-options.setting.view-bobbing.description": {
+    "message": "Add a bobbing motion to the camera while walking."
+  },
+  "app.settings.game-options.setting.view-bobbing.label": {
+    "message": "View bobbing"
+  },
+  "app.settings.game-options.setting.vignette.label": {
+    "message": "Vignette"
+  },
+  "app.settings.game-options.setting.voice-volume.label": {
+    "message": "Voice and speech"
+  },
+  "app.settings.game-options.setting.vsync.description": {
+    "message": "Limit the frame rate to the display refresh rate to prevent screen tearing."
+  },
+  "app.settings.game-options.setting.vsync.label": {
+    "message": "VSync"
+  },
+  "app.settings.game-options.setting.weather-radius.label": {
+    "message": "Weather radius"
+  },
+  "app.settings.game-options.setting.weather-volume.label": {
+    "message": "Weather"
+  },
+  "app.settings.game-options.validation.changed-since-opened": {
+    "message": "This setting changed elsewhere. Check it and try again."
+  },
+  "app.settings.game-options.validation.invalid-value": {
+    "message": "Choose a valid value."
+  },
+  "app.settings.game-options.validation.missing-value": {
+    "message": "Choose a value first."
+  },
+  "app.settings.game-options.validation.no-compatible-instances": {
+    "message": "Some of your instances cannot use this setting"
   },
   "app.settings.groups.data-privacy": {
     "message": "Data & privacy"
@@ -6798,7 +9276,7 @@
     "message": "Game"
   },
   "app.settings.groups.launcher": {
-    "message": "Launcher"
+    "message": "Interface"
   },
   "app.settings.groups.support": {
     "message": "App & support"
@@ -6887,8 +9365,119 @@
   "app.settings.java.view-installed": {
     "message": "View installed Java"
   },
+  "app.settings.language.system": {
+    "message": "System language"
+  },
+  "app.settings.language.system.description": {
+    "message": "Follow the language of this device"
+  },
+  "app.settings.language.system.disabled-tooltip": {
+    "message": "Turn on to follow the language of this device automatically."
+  },
+  "app.settings.language.system.enabled-tooltip": {
+    "message": "Following this device. Open the language list or turn this off to pick manually."
+  },
+  "app.settings.logs.export.button": {
+    "message": "Export logs…"
+  },
+  "app.settings.logs.export.description": {
+    "message": "Package launcher logs with an optional environment summary, instance log, and crash analysis."
+  },
+  "app.settings.logs.export.modal.cancel": {
+    "message": "Cancel"
+  },
+  "app.settings.logs.export.modal.confirm": {
+    "message": "Export"
+  },
+  "app.settings.logs.export.modal.crash-analysis": {
+    "message": "Crash analysis (when a crash is detected)"
+  },
+  "app.settings.logs.export.modal.description": {
+    "message": "Choose how much detail to include. Exported logs have access tokens, Minecraft tokens, and IP addresses replaced with placeholders."
+  },
+  "app.settings.logs.export.modal.extras": {
+    "message": "Additional information"
+  },
+  "app.settings.logs.export.modal.instance-logs": {
+    "message": "Most recent instance log"
+  },
+  "app.settings.logs.export.modal.level": {
+    "message": "Log level"
+  },
+  "app.settings.logs.export.modal.level.all": {
+    "message": "All levels"
+  },
+  "app.settings.logs.export.modal.level.debug": {
+    "message": "Debug and above"
+  },
+  "app.settings.logs.export.modal.level.info": {
+    "message": "Info and above"
+  },
+  "app.settings.logs.export.modal.range": {
+    "message": "Time range"
+  },
+  "app.settings.logs.export.modal.range.2-hours": {
+    "message": "Last 2 hours"
+  },
+  "app.settings.logs.export.modal.range.30-minutes": {
+    "message": "Last 30 minutes"
+  },
+  "app.settings.logs.export.modal.range.all": {
+    "message": "All sessions"
+  },
+  "app.settings.logs.export.modal.system-info": {
+    "message": "System and environment summary"
+  },
+  "app.settings.logs.export.modal.title": {
+    "message": "Export logs"
+  },
+  "app.settings.logs.export.notification-text": {
+    "message": "The log archive was saved to {path}"
+  },
+  "app.settings.logs.export.notification-title": {
+    "message": "Logs exported"
+  },
+  "app.settings.logs.export.title": {
+    "message": "Export logs"
+  },
+  "app.settings.logs.level.debug": {
+    "message": "Debug"
+  },
+  "app.settings.logs.level.description": {
+    "message": "Choose the lowest level written to the launcher log files."
+  },
+  "app.settings.logs.level.error": {
+    "message": "Error"
+  },
+  "app.settings.logs.level.hint": {
+    "message": "Info is the default. Debug and Trace record more detail and create larger log files."
+  },
+  "app.settings.logs.level.hint-beta": {
+    "message": "Beta uses Debug by default and only allows Debug or Trace so diagnostics retain enough detail."
+  },
+  "app.settings.logs.level.info": {
+    "message": "Info"
+  },
+  "app.settings.logs.level.title": {
+    "message": "Log level"
+  },
+  "app.settings.logs.level.trace": {
+    "message": "Trace (everything)"
+  },
+  "app.settings.logs.level.warn": {
+    "message": "Warning"
+  },
+  "app.settings.logs.open-folder": {
+    "message": "Open logs folder"
+  },
+  "app.settings.logs.retention.description": {
+    "message": "The last 30 minutes keep every level. Trace entries are dropped after 30 minutes, and debug entries after 2 hours. Warnings and errors stay for up to 3 days."
+  },
+  "app.settings.logs.retention.title": {
+    "message": "Automatic log retention"
+  },
   "app.settings.privacy.data-handling": {
-    "message": "Telemetry uses a random installation identifier. Error context is sanitized and limited before it leaves this device. Turning telemetry off clears pending reports immediately."
+    "message": "Telemetry uses a random installation identifier and sends only a daily activity signal. Turning telemetry off clears pending data immediately."
   },
   "app.settings.privacy.discord-rpc": {
     "message": "Discord Rich Presence"
@@ -6896,11 +9485,32 @@
   "app.settings.privacy.discord-rpc-description": {
     "message": "Show your current launcher or game activity in Discord."
   },
+  "app.settings.privacy.external-scheme": {
+    "message": "Allow external links"
+  },
+  "app.settings.privacy.external-scheme-description": {
+    "message": "Respond to axolotl:// links from browsers and other apps. Turning this off blocks launches, installs and page jumps from outside."
+  },
+  "app.settings.privacy.privileged-scheme": {
+    "message": "Allow privileged link actions"
+  },
+  "app.settings.privacy.privileged-scheme-description": {
+    "message": "Let axolotl:// links change settings and stop game processes. Turning this on requires reading a risk warning; every action still asks for your confirmation."
+  },
+  "app.settings.privacy.section-title": {
+    "message": "Privacy & data sharing"
+  },
+  "app.settings.privacy.security-title": {
+    "message": "Security"
+  },
   "app.settings.privacy.telemetry": {
     "message": "Allow telemetry"
   },
   "app.settings.privacy.telemetry-description": {
-    "message": "Send an anonymous daily activity signal and sanitized launcher error reports. Minecraft logs and account credentials are never uploaded."
+    "message": "Send one anonymous daily activity signal to improve usage statistics. Minecraft logs and account credentials are never uploaded."
+  },
+  "app.settings.resources.add-minecraft-directory": {
+    "message": "Add .minecraft directory"
   },
   "app.settings.resources.app-cache": {
     "message": "App cache"
@@ -6916,6 +9526,9 @@
   },
   "app.settings.resources.app-directory-description-portable": {
     "message": "You are currently running in portable mode. The app directory is fixed and cannot be changed."
+  },
+  "app.settings.resources.axolotl-data-directory": {
+    "message": "Axolotl data directory"
   },
   "app.settings.resources.concurrency.manual": {
     "message": "Manual"
@@ -6938,23 +9551,26 @@
   "app.settings.resources.database-backups-description": {
     "message": "Backups of important app data are stored here in case you need to recover them later."
   },
-  "app.settings.resources.download-engine": {
-    "message": "Download engine"
+  "app.settings.resources.doh-enabled": {
+    "message": "Use DNS over HTTPS"
   },
-  "app.settings.resources.download-engine-description": {
-    "message": "Choose which download engine the launcher uses."
+  "app.settings.resources.doh-settings": {
+    "message": "DNS over HTTPS"
   },
-  "app.settings.resources.download-engine.legacy": {
-    "message": "Native engine"
-  },
-  "app.settings.resources.download-engine.xmcl": {
-    "message": "XMCL-compatible"
+  "app.settings.resources.doh-settings-description": {
+    "message": "Resolve download hosts through a built-in pool of encrypted DNS services."
   },
   "app.settings.resources.download-mirrors": {
     "message": "Download sources"
   },
   "app.settings.resources.download-mirrors-description": {
     "message": "Automatic mode chooses between official and mirror sources based on your local environment and recent connection quality."
+  },
+  "app.settings.resources.ignore-ssl-errors": {
+    "message": "Ignore SSL certificate errors"
+  },
+  "app.settings.resources.ignore-ssl-errors-description": {
+    "message": "Allows downloads through proxies or network tools that replace HTTPS certificates. This disables certificate verification and can expose downloads to tampering. Enable it only when necessary."
   },
   "app.settings.resources.maximum-downloads": {
     "message": "Maximum concurrent downloads"
@@ -6967,6 +9583,24 @@
   },
   "app.settings.resources.maximum-writes-description": {
     "message": "The maximum number of files the launcher can write to disk at once. Use a lower value if you frequently get I/O errors. An app restart is required."
+  },
+  "app.settings.resources.minecraft-directories": {
+    "message": "Minecraft directories"
+  },
+  "app.settings.resources.minecraft-directories-description": {
+    "message": "Add one or more .minecraft folders for instances that use an external game directory. These folders are kept separate from Axolotl data."
+  },
+  "app.settings.resources.minecraft-directory-mode": {
+    "message": "Game directory mode"
+  },
+  "app.settings.resources.minecraft-directory-mode.automatic": {
+    "message": "Automatic"
+  },
+  "app.settings.resources.minecraft-directory-mode.isolated": {
+    "message": "Version-isolated"
+  },
+  "app.settings.resources.minecraft-directory-mode.shared": {
+    "message": "Shared .minecraft directory"
   },
   "app.settings.resources.minecraft-file-source": {
     "message": "Minecraft files, loaders, and Java"
@@ -7070,14 +9704,32 @@
   "app.settings.resources.purge-confirm-title": {
     "message": "Are you sure you want to purge the cache?"
   },
+  "app.settings.resources.remove-minecraft-directory": {
+    "message": "Remove .minecraft directory"
+  },
   "app.settings.resources.reset-import-directory": {
     "message": "Use system Downloads folder"
+  },
+  "app.settings.resources.sections.data-storage": {
+    "message": "Data directories & cache"
+  },
+  "app.settings.resources.sections.download-behavior": {
+    "message": "Download behavior"
+  },
+  "app.settings.resources.sections.missing-content": {
+    "message": "Missing content"
+  },
+  "app.settings.resources.sections.network-authentication": {
+    "message": "Network authentication"
   },
   "app.settings.resources.select-directory": {
     "message": "Select a new app directory"
   },
   "app.settings.resources.select-import-directory": {
     "message": "Select monitored folder"
+  },
+  "app.settings.resources.select-minecraft-directory": {
+    "message": "Select a .minecraft directory"
   },
   "app.settings.resources.source.automatic": {
     "message": "Automatic (recommended)"
@@ -7099,9 +9751,6 @@
   },
   "app.settings.resources.source.open-bmcl-api": {
     "message": "Prefer OpenBMCLAPI"
-  },
-  "app.settings.resources.source.tianpao": {
-    "message": "Prefer Tianpao"
   },
   "app.settings.resources.system-downloads-directory": {
     "message": "System Downloads folder"
@@ -7226,11 +9875,254 @@
   "app.settings.storage.world": {
     "message": "World"
   },
+  "app.settings.synced-options.choose-sync-source.command-history-description": {
+    "message": "Choose which instance to copy your command history from. This history is only used for the initial sync, and you can edit it from any instance afterward."
+  },
+  "app.settings.synced-options.choose-sync-source.command-history-title": {
+    "message": "Choose command history source"
+  },
+  "app.settings.synced-options.choose-sync-source.creative-hotbars-description": {
+    "message": "Choose which instance to copy your saved creative hotbars from. These hotbars are only used for the initial sync, and you can edit them from any instance afterward."
+  },
+  "app.settings.synced-options.choose-sync-source.creative-hotbars-title": {
+    "message": "Choose creative hotbars source"
+  },
+  "app.settings.synced-options.choose-sync-source.data-packs-title": {
+    "message": "Choose data packs source"
+  },
+  "app.settings.synced-options.choose-sync-source.game-settings-description": {
+    "message": "Choose which instance to copy your game settings from. These settings are only used for the initial sync, and you can edit them from any instance afterward."
+  },
+  "app.settings.synced-options.choose-sync-source.game-settings-title": {
+    "message": "Choose game settings source"
+  },
+  "app.settings.synced-options.choose-sync-source.ineligible": {
+    "message": "You cannot choose this instance as a sync source"
+  },
+  "app.settings.synced-options.choose-sync-source.load-error": {
+    "message": "Could not load sync sources. Please try again."
+  },
+  "app.settings.synced-options.choose-sync-source.multiplayer-servers-description": {
+    "message": "Choose which instance to copy your multiplayer servers from. These servers are only used for the initial sync, and you can edit them from any instance afterward."
+  },
+  "app.settings.synced-options.choose-sync-source.multiplayer-servers-title": {
+    "message": "Choose multiplayer servers source"
+  },
+  "app.settings.synced-options.choose-sync-source.no-instances-found": {
+    "message": "No instances found"
+  },
+  "app.settings.synced-options.choose-sync-source.resource-packs-title": {
+    "message": "Choose resource packs source"
+  },
+  "app.settings.synced-options.choose-sync-source.retry": {
+    "message": "Try again"
+  },
+  "app.settings.synced-options.choose-sync-source.search-placeholder": {
+    "message": "Search instance"
+  },
+  "app.settings.synced-options.choose-sync-source.sync": {
+    "message": "Sync"
+  },
+  "app.settings.synced-options.command-history": {
+    "message": "Sync command history"
+  },
+  "app.settings.synced-options.command-history.description": {
+    "message": "Use the same command history across your instances."
+  },
+  "app.settings.synced-options.command-history.editor-title": {
+    "message": "Edit command history"
+  },
+  "app.settings.synced-options.creative-hotbars": {
+    "message": "Sync saved creative hotbars"
+  },
+  "app.settings.synced-options.creative-hotbars.description": {
+    "message": "Use the same saved creative hotbars across your instances."
+  },
+  "app.settings.synced-options.data-packs": {
+    "message": "Sync data packs"
+  },
+  "app.settings.synced-options.data-packs.description": {
+    "message": "Use the same datapacks across your instances"
+  },
+  "app.settings.synced-options.data-packs.none-synced-yet": {
+    "message": "You haven't synced any data packs yet"
+  },
+  "app.settings.synced-options.edit.no-instances": {
+    "message": "Add an instance before editing synced data."
+  },
+  "app.settings.synced-options.edit.no-synced-data": {
+    "message": "Choose a sync source before editing this setting."
+  },
+  "app.settings.synced-options.game-settings": {
+    "message": "Sync game options"
+  },
+  "app.settings.synced-options.game-settings.button": {
+    "message": "Edit game settings"
+  },
+  "app.settings.synced-options.game-settings.conflict-text": {
+    "message": "We loaded the latest settings. Check your changes, then save again."
+  },
+  "app.settings.synced-options.game-settings.conflict-title": {
+    "message": "These settings changed elsewhere"
+  },
+  "app.settings.synced-options.game-settings.custom-empty": {
+    "message": "Settings added by mods will appear here after Modrinth finds them in one of your instances."
+  },
+  "app.settings.synced-options.game-settings.description": {
+    "message": "Use the same game options across your instances."
+  },
+  "app.settings.synced-options.game-settings.disable-all": {
+    "message": "Unsync all"
+  },
+  "app.settings.synced-options.game-settings.disabled-tooltip": {
+    "message": "Enable game settings sync before choosing individual settings."
+  },
+  "app.settings.synced-options.game-settings.empty": {
+    "message": "No settings match your search or filter."
+  },
+  "app.settings.synced-options.game-settings.enable-all": {
+    "message": "Sync all"
+  },
+  "app.settings.synced-options.game-settings.load-failed": {
+    "message": "We couldn’t load your game settings."
+  },
+  "app.settings.synced-options.game-settings.loading": {
+    "message": "Loading settings..."
+  },
+  "app.settings.synced-options.game-settings.no-options-to-edit": {
+    "message": "You haven't got any options yet to edit"
+  },
+  "app.settings.synced-options.game-settings.not-being-synced": {
+    "message": "Not being synced"
+  },
+  "app.settings.synced-options.game-settings.retry": {
+    "message": "Retry"
+  },
+  "app.settings.synced-options.game-settings.save": {
+    "message": "Save settings"
+  },
+  "app.settings.synced-options.game-settings.search": {
+    "message": "Search settings..."
+  },
+  "app.settings.synced-options.game-settings.sync-description": {
+    "message": "Synced options are applied to every instance and override the values included with a modpack."
+  },
+  "app.settings.synced-options.game-settings.sync-setting": {
+    "message": "Sync {setting} across instances"
+  },
+  "app.settings.synced-options.game-settings.sync-title": {
+    "message": "Sync game settings"
+  },
+  "app.settings.synced-options.game-settings.synced-across-instances": {
+    "message": "Synced across instances"
+  },
+  "app.settings.synced-options.game-settings.title": {
+    "message": "Game settings"
+  },
+  "app.settings.synced-options.game-settings.unsaved-changes": {
+    "message": "You have unsaved changes."
+  },
+  "app.settings.synced-options.game-settings.unsync-setting": {
+    "message": "Stop syncing {setting} across instances"
+  },
+  "app.settings.synced-options.game-settings.value-mixed": {
+    "message": "Different across instances"
+  },
+  "app.settings.synced-options.game-settings.value-off": {
+    "message": "Off"
+  },
+  "app.settings.synced-options.game-settings.value-on": {
+    "message": "On"
+  },
+  "app.settings.synced-options.game-settings.value-unset": {
+    "message": "Choose a value"
+  },
+  "app.settings.synced-options.multiplayer-servers": {
+    "message": "Sync multiplayer servers"
+  },
+  "app.settings.synced-options.multiplayer-servers.address": {
+    "message": "Server address"
+  },
+  "app.settings.synced-options.multiplayer-servers.copy-address": {
+    "message": "Copy address"
+  },
+  "app.settings.synced-options.multiplayer-servers.count": {
+    "message": "{count, plural, one {# server} other {# servers}}"
+  },
+  "app.settings.synced-options.multiplayer-servers.description": {
+    "message": "Use the same multiplayer servers across your instances."
+  },
+  "app.settings.synced-options.multiplayer-servers.editor-title": {
+    "message": "Edit synced servers"
+  },
+  "app.settings.synced-options.multiplayer-servers.empty": {
+    "message": "No user-added servers are currently synced."
+  },
+  "app.settings.synced-options.multiplayer-servers.filter-offline": {
+    "message": "Offline"
+  },
+  "app.settings.synced-options.multiplayer-servers.filter-online": {
+    "message": "Online"
+  },
+  "app.settings.synced-options.multiplayer-servers.more-options": {
+    "message": "More server options"
+  },
+  "app.settings.synced-options.multiplayer-servers.name": {
+    "message": "Server name"
+  },
+  "app.settings.synced-options.multiplayer-servers.no-results": {
+    "message": "No synced servers match your search or filters."
+  },
+  "app.settings.synced-options.multiplayer-servers.none-synced-yet": {
+    "message": "You haven't synced any servers yet"
+  },
+  "app.settings.synced-options.multiplayer-servers.players-online": {
+    "message": "{count, number} online"
+  },
+  "app.settings.synced-options.multiplayer-servers.search": {
+    "message": "Search {count, number} {count, plural, one {synced server} other {synced servers}}..."
+  },
+  "app.settings.synced-options.multiplayer-servers.status": {
+    "message": "Status"
+  },
+  "app.settings.synced-options.packs.disabled": {
+    "message": "Enable syncing before editing shared packs."
+  },
+  "app.settings.synced-options.resource-packs": {
+    "message": "Sync resource packs"
+  },
+  "app.settings.synced-options.resource-packs.description": {
+    "message": "Use the same resource packs across your instances."
+  },
+  "app.settings.synced-options.resource-packs.none-synced-yet": {
+    "message": "You haven't synced any resource packs yet"
+  },
+  "app.settings.synced-options.title": {
+    "message": "Options synced across all instances"
+  },
+  "app.settings.synced-packs.data-packs": {
+    "message": "Data packs"
+  },
+  "app.settings.synced-packs.disable": {
+    "message": "Disable"
+  },
+  "app.settings.synced-packs.empty": {
+    "message": "No synced packs"
+  },
+  "app.settings.synced-packs.enable": {
+    "message": "Enable"
+  },
+  "app.settings.synced-packs.remove": {
+    "message": "Remove"
+  },
+  "app.settings.synced-packs.resource-packs": {
+    "message": "Resource packs"
+  },
   "app.settings.tabs.about": {
     "message": "About"
   },
   "app.settings.tabs.ai": {
-    "message": "AI"
+    "message": "AI features"
   },
   "app.settings.tabs.content-downloads": {
     "message": "Content & downloads"
@@ -7238,8 +10130,11 @@
   "app.settings.tabs.home-navigation": {
     "message": "Home & navigation"
   },
+  "app.settings.tabs.instance-sync": {
+    "message": "Instance synchronization"
+  },
   "app.settings.tabs.interface": {
-    "message": "Interface & appearance"
+    "message": "Appearance"
   },
   "app.settings.tabs.java-performance": {
     "message": "Java & performance"
@@ -7248,13 +10143,19 @@
     "message": "Language & translation"
   },
   "app.settings.tabs.launch-defaults": {
-    "message": "Launch & instance defaults"
+    "message": "Launch defaults"
+  },
+  "app.settings.tabs.logs": {
+    "message": "Logs & diagnostics"
   },
   "app.settings.tabs.network-multiplayer": {
     "message": "Network & multiplayer"
   },
   "app.settings.tabs.privacy-data": {
     "message": "Privacy & data sharing"
+  },
+  "app.settings.tabs.shortcut-settings": {
+    "message": "Keyboard shortcuts"
   },
   "app.settings.tabs.storage": {
     "message": "Storage"
@@ -7283,6 +10184,9 @@
   "app.settings.updates.channel.beta": {
     "message": "Beta"
   },
+  "app.settings.updates.channel.beta-description": {
+    "message": "New, less stable updates with the latest features. Updates arrive more often."
+  },
   "app.settings.updates.channel.copy-database": {
     "message": "Copy database"
   },
@@ -7295,8 +10199,14 @@
   "app.settings.updates.channel.description": {
     "message": "Choose which launcher versions Axolotl receives."
   },
+  "app.settings.updates.channel.label": {
+    "message": "Channel"
+  },
   "app.settings.updates.channel.release": {
     "message": "Release"
+  },
+  "app.settings.updates.channel.release-description": {
+    "message": "Stable, tested features and fixes. Updates arrive less often."
   },
   "app.settings.updates.channel.restart-description": {
     "message": "Restart Axolotl now to start using the new update channel, or restart manually later."
@@ -7322,8 +10232,62 @@
   "app.settings.updates.check": {
     "message": "Check for updates"
   },
+  "app.settings.updates.check.title": {
+    "message": "Check for updates"
+  },
   "app.settings.updates.checking": {
     "message": "Checking for updates…"
+  },
+  "app.settings.updates.current-version": {
+    "message": "Current version {version}"
+  },
+  "app.settings.updates.database-isolation.active": {
+    "message": "Active"
+  },
+  "app.settings.updates.database-isolation.beta": {
+    "message": "Beta database"
+  },
+  "app.settings.updates.database-isolation.current-database": {
+    "message": "Database currently in use"
+  },
+  "app.settings.updates.database-isolation.description": {
+    "message": "Release and Beta use separate databases, so testing Beta does not change your Release data."
+  },
+  "app.settings.updates.database-isolation.release": {
+    "message": "Release database"
+  },
+  "app.settings.updates.database-isolation.title": {
+    "message": "Database isolation"
+  },
+  "app.settings.updates.database-operation.active-target": {
+    "message": "Cannot overwrite the database currently in use. Restart Axolotl and switch channels first."
+  },
+  "app.settings.updates.database-operation.beta-to-release": {
+    "message": "Copy Beta to Release"
+  },
+  "app.settings.updates.database-operation.cancel": {
+    "message": "Cancel"
+  },
+  "app.settings.updates.database-operation.confirm": {
+    "message": "Overwrite database"
+  },
+  "app.settings.updates.database-operation.confirm-description": {
+    "message": "This will completely replace the inactive {target} database with the contents of the {source} database. This cannot be undone."
+  },
+  "app.settings.updates.database-operation.confirm-title": {
+    "message": "Overwrite database?"
+  },
+  "app.settings.updates.database-operation.failed": {
+    "message": "The database could not be copied. Please make sure Axolotl is not using the target database."
+  },
+  "app.settings.updates.database-operation.label": {
+    "message": "Database operation"
+  },
+  "app.settings.updates.database-operation.release-to-beta": {
+    "message": "Copy Release to Beta"
+  },
+  "app.settings.updates.database-operation.success": {
+    "message": "{source} database was copied to {target} successfully."
   },
   "app.settings.updates.disabled": {
     "message": "Updates are disabled in this build."
@@ -7335,7 +10299,19 @@
     "message": "Get updates as soon as they are available"
   },
   "app.settings.updates.immediate-fetch-description": {
-    "message": "Release updates wait 24 hours by default. Beta updates are always available immediately."
+    "message": "After the latest stable changes and fixes are released, be among the first to receive them."
+  },
+  "app.settings.updates.immediate-fetch.beta-description": {
+    "message": "Beta updates are always available immediately."
+  },
+  "app.settings.updates.latest-version": {
+    "message": "Latest {channel} version: {version}"
+  },
+  "app.settings.updates.latest-version-loading": {
+    "message": "Fetching latest version…"
+  },
+  "app.settings.updates.latest-version-unavailable": {
+    "message": "Latest version unavailable"
   },
   "app.settings.updates.offline": {
     "message": "Connect to the internet to check for updates."
@@ -7349,8 +10325,8 @@
   "app.settings.updates.paused": {
     "message": "Updates are paused."
   },
-  "app.settings.updates.portable": {
-    "message": "Portable mode cannot update automatically. Please download the latest version manually."
+  "app.settings.updates.preferences.title": {
+    "message": "Update behavior"
   },
   "app.settings.updates.preview-announcement": {
     "message": "Preview update announcement"
@@ -7360,6 +10336,108 @@
   },
   "app.settings.updates.up-to-date": {
     "message": "Axolotl is up to date."
+  },
+  "app.shortcut-settings.change-shortcut": {
+    "message": "Change the shortcut for {action}"
+  },
+  "app.shortcut-settings.enable": {
+    "message": "Enable quick scrolling"
+  },
+  "app.shortcut-settings.end-action": {
+    "message": "Scroll to the bottom"
+  },
+  "app.shortcut-settings.end-action-description": {
+    "message": "Moves the page you are reading to the bottom."
+  },
+  "app.shortcut-settings.home-action": {
+    "message": "Scroll to the top"
+  },
+  "app.shortcut-settings.home-action-description": {
+    "message": "Moves the page you are reading to the top."
+  },
+  "app.shortcut-settings.nav-create": {
+    "message": "Create new instance"
+  },
+  "app.shortcut-settings.nav-create-description": {
+    "message": "Jump to creating a new instance."
+  },
+  "app.shortcut-settings.nav-description": {
+    "message": "Jump to a menu item with its shortcut. Each shortcut is off until enabled."
+  },
+  "app.shortcut-settings.nav-discover": {
+    "message": "Discover content"
+  },
+  "app.shortcut-settings.nav-discover-description": {
+    "message": "Jump to browsing content."
+  },
+  "app.shortcut-settings.nav-downloads": {
+    "message": "Downloads"
+  },
+  "app.shortcut-settings.nav-downloads-description": {
+    "message": "Jump to downloads."
+  },
+  "app.shortcut-settings.nav-home": {
+    "message": "Home"
+  },
+  "app.shortcut-settings.nav-home-description": {
+    "message": "Jump to the Home page."
+  },
+  "app.shortcut-settings.nav-lab": {
+    "message": "Lab"
+  },
+  "app.shortcut-settings.nav-lab-description": {
+    "message": "Jump to the Lab."
+  },
+  "app.shortcut-settings.nav-library": {
+    "message": "Library"
+  },
+  "app.shortcut-settings.nav-library-description": {
+    "message": "Jump to your library."
+  },
+  "app.shortcut-settings.nav-multiplayer": {
+    "message": "Multiplayer"
+  },
+  "app.shortcut-settings.nav-multiplayer-description": {
+    "message": "Jump to multiplayer."
+  },
+  "app.shortcut-settings.nav-settings": {
+    "message": "Settings"
+  },
+  "app.shortcut-settings.nav-settings-description": {
+    "message": "Jump to the settings."
+  },
+  "app.shortcut-settings.nav-skins": {
+    "message": "Skin selector"
+  },
+  "app.shortcut-settings.nav-skins-description": {
+    "message": "Jump to the skin selector."
+  },
+  "app.shortcut-settings.nav-title": {
+    "message": "Navigation shortcuts"
+  },
+  "app.shortcut-settings.nav-worlds": {
+    "message": "Worlds"
+  },
+  "app.shortcut-settings.nav-worlds-description": {
+    "message": "Jump to your worlds."
+  },
+  "app.shortcut-settings.page-down-action": {
+    "message": "Scroll down one screen"
+  },
+  "app.shortcut-settings.page-down-action-description": {
+    "message": "Moves the page you are reading down by one screen."
+  },
+  "app.shortcut-settings.page-up-action": {
+    "message": "Scroll up one screen"
+  },
+  "app.shortcut-settings.page-up-action-description": {
+    "message": "Moves the page you are reading up by one screen."
+  },
+  "app.shortcut-settings.scroll-description": {
+    "message": "Move through long pages with the keyboard."
+  },
+  "app.shortcut-settings.scroll-title": {
+    "message": "Quick scrolling"
   },
   "app.sidebar.collapse": {
     "message": "Collapse sidebar"
@@ -7375,6 +10453,27 @@
   },
   "app.skins.apply-button": {
     "message": "Apply"
+  },
+  "app.skins.armor.close": {
+    "message": "Close"
+  },
+  "app.skins.armor.description": {
+    "message": "Try armour and trims on your skin. Nothing is stored until you save it."
+  },
+  "app.skins.armor.reset-to-saved": {
+    "message": "Reset to saved"
+  },
+  "app.skins.armor.restore-defaults": {
+    "message": "Restore defaults"
+  },
+  "app.skins.armor.save": {
+    "message": "Save"
+  },
+  "app.skins.armor.title": {
+    "message": "Armour and trims"
+  },
+  "app.skins.armor.unsaved": {
+    "message": "Unsaved changes"
   },
   "app.skins.create-skin": {
     "message": "Create skin"
@@ -7538,21 +10637,6 @@
   "app.splash.updating-app-directory": {
     "message": "Updating app directory..."
   },
-  "app.survey-promotion.defer-hint": {
-    "message": "If you close this dialog, you can still find the survey later in Settings > About."
-  },
-  "app.survey-promotion.fill-survey": {
-    "message": "Fill out the survey"
-  },
-  "app.survey-promotion.intro": {
-    "message": "To help us improve Axolotl Launcher, we have prepared a short survey and would love to hear your feedback."
-  },
-  "app.survey-promotion.reward": {
-    "message": "Lucky participants will be drawn to win a genuine Minecraft account (redeemable for cash)."
-  },
-  "app.survey-promotion.title": {
-    "message": "Community survey"
-  },
   "app.symlink-capability.unsupported": {
     "message": "This system does not support creating symbolic links."
   },
@@ -7576,6 +10660,12 @@
   },
   "app.symlink-warning.write.header": {
     "message": "Shared instance"
+  },
+  "app.sync-instances-update.choose-source.data-packs": {
+    "message": "Choose which instance to copy your data packs from. These packs are only used for the initial sync, and you can edit them from any instance afterward."
+  },
+  "app.sync-instances-update.choose-source.resource-packs": {
+    "message": "Choose which instance to copy your resource packs from. These packs are only used for the initial sync, and you can edit them from any instance afterward."
   },
   "app.translation-settings.ai-model": {
     "message": "Text model"
@@ -7627,6 +10717,9 @@
   },
   "app.translation-settings.display-mode.translation-only": {
     "message": "Translation only"
+  },
+  "app.translation-settings.display-section-title": {
+    "message": "Translation display"
   },
   "app.translation-settings.google-ip-pool": {
     "message": "IP pool {count}"
@@ -7706,6 +10799,12 @@
   "app.translation-settings.title": {
     "message": "Translation"
   },
+  "app.translation.auto-translate-hint.text": {
+    "message": "You can turn this on in Settings → Language & translation so browse results and project pages translate for you."
+  },
+  "app.translation.auto-translate-hint.title": {
+    "message": "Use automatic translation"
+  },
   "app.translation.error.authentication": {
     "message": "The translation service could not authenticate. Please try again later."
   },
@@ -7757,9 +10856,6 @@
   "app.update-popup.body.download-complete": {
     "message": "Axolotl Launcher v{version} has finished downloading. Reload to update now, or automatically when you close Axolotl Launcher."
   },
-  "app.update-popup.body.linux": {
-    "message": "Axolotl Launcher v{version} is available. Use your package manager to update for the latest features and fixes!"
-  },
   "app.update-popup.body.metered": {
     "message": "Axolotl Launcher v{version} is available now! Since you're on a metered network, we didn't automatically download it."
   },
@@ -7768,9 +10864,6 @@
   },
   "app.update-popup.download": {
     "message": "Download ({size})"
-  },
-  "app.update-popup.apt-update": {
-    "message": "Update"
   },
   "app.update-popup.download-complete": {
     "message": "Download complete"
@@ -7795,6 +10888,18 @@
   },
   "app.warning.running-as-admin": {
     "message": "Axolotl is running as administrator. Drag-and-drop file import is disabled in this mode; please restart the launcher without administrator privileges."
+  },
+  "app.window-controls.close": {
+    "message": "Close"
+  },
+  "app.window-controls.maximize": {
+    "message": "Maximize"
+  },
+  "app.window-controls.minimize": {
+    "message": "Minimize"
+  },
+  "app.window-controls.restore": {
+    "message": "Restore"
   },
   "app.world-editor.allow-commands.label": {
     "message": "Allow cheats"
@@ -8156,6 +11261,9 @@
   "app.worlds.title": {
     "message": "Worlds"
   },
+  "create.add-minecraft-folder": {
+    "message": "Add .minecraft folder"
+  },
   "create.back": {
     "message": "Back to Library"
   },
@@ -8170,6 +11278,9 @@
   },
   "create.new.title": {
     "message": "Start Fresh"
+  },
+  "create.pcl-hmcl-hint": {
+    "message": "Using PCL / HMCL?"
   },
   "create.subtitle": {
     "message": "Start a new adventure or bring your existing worlds"
@@ -8354,6 +11465,141 @@
   "instance.add-server.title": {
     "message": "Add a server"
   },
+  "instance.backups.added-size": {
+    "message": "{size} newly stored"
+  },
+  "instance.backups.all-included": {
+    "message": "All instance files and folders are included."
+  },
+  "instance.backups.backup-now": {
+    "message": "Back up now"
+  },
+  "instance.backups.cancel": {
+    "message": "Cancel backup"
+  },
+  "instance.backups.choose": {
+    "message": "Everything is backed up by default. Add files or folders that should be excluded."
+  },
+  "instance.backups.delete": {
+    "message": "Delete backup"
+  },
+  "instance.backups.delete-body": {
+    "message": "This snapshot will be permanently deleted. Unused stored files will also be removed."
+  },
+  "instance.backups.delete-title": {
+    "message": "Delete this backup?"
+  },
+  "instance.backups.description": {
+    "message": "Create deduplicated snapshots of the whole instance while it is closed."
+  },
+  "instance.backups.disable": {
+    "message": "Disable backups"
+  },
+  "instance.backups.disable-blocked": {
+    "message": "Delete every snapshot before disabling backups."
+  },
+  "instance.backups.edit-exclusions": {
+    "message": "Edit exclusions"
+  },
+  "instance.backups.empty": {
+    "message": "No backups have been created yet."
+  },
+  "instance.backups.enable": {
+    "message": "Enable backups"
+  },
+  "instance.backups.excluded-paths": {
+    "message": "Excluded: {paths}"
+  },
+  "instance.backups.exclusions.add-file": {
+    "message": "Add excluded file"
+  },
+  "instance.backups.exclusions.add-folder": {
+    "message": "Add excluded folder"
+  },
+  "instance.backups.exclusions.empty": {
+    "message": "No files or folders are excluded."
+  },
+  "instance.backups.exclusions.remove": {
+    "message": "Remove {path} from exclusions"
+  },
+  "instance.backups.loading": {
+    "message": "Loading backup settings..."
+  },
+  "instance.backups.progress-bytes": {
+    "message": "{processed} of {total}"
+  },
+  "instance.backups.restore": {
+    "message": "Restore backup"
+  },
+  "instance.backups.restore-body": {
+    "message": "Upcoming operations: add {added, plural, one {# file} other {# files}}, modify {modified, plural, one {# file} other {# files}}, and delete {deleted, plural, one {# file} other {# files}}. Continue?"
+  },
+  "instance.backups.restore-title": {
+    "message": "Restore this backup?"
+  },
+  "instance.backups.save-exclusions": {
+    "message": "Save exclusions"
+  },
+  "instance.backups.snapshot-meta": {
+    "message": "{files, plural, one {# file} other {# files}} · {size}"
+  },
+  "instance.backups.snapshots": {
+    "message": "Snapshots"
+  },
+  "instance.backups.stage.applying": {
+    "message": "Applying changed files"
+  },
+  "instance.backups.stage.failed": {
+    "message": "Backup failed"
+  },
+  "instance.backups.stage.hashing": {
+    "message": "Hashing files"
+  },
+  "instance.backups.stage.interrupted": {
+    "message": "Backup operation was interrupted"
+  },
+  "instance.backups.stage.materializing": {
+    "message": "Preparing changed files"
+  },
+  "instance.backups.stage.preview": {
+    "message": "Analyzing restore changes"
+  },
+  "instance.backups.stage.queued": {
+    "message": "Waiting to start"
+  },
+  "instance.backups.stage.saving": {
+    "message": "Saving snapshot index"
+  },
+  "instance.backups.stage.scanning": {
+    "message": "Scanning files"
+  },
+  "instance.backups.stage.validating": {
+    "message": "Validating restore"
+  },
+  "instance.backups.title": {
+    "message": "Instance backups"
+  },
+  "instance.backups.unavailable": {
+    "message": "Backups are unavailable"
+  },
+  "instance.backups.unavailable.direct-linked": {
+    "message": "Instances linked directly to another launcher cannot be backed up."
+  },
+  "instance.backups.unavailable.external-directory": {
+    "message": "Instances that use an external game directory cannot be backed up."
+  },
+  "instance.backups.unavailable.not-installed": {
+    "message": "Finish installing this instance before enabling backups."
+  },
+  "instance.backups.unavailable.root-link": {
+    "message": "Instances whose root folder is a link cannot be backed up."
+  },
+  "instance.backups.unavailable.root-missing": {
+    "message": "The instance folder is missing."
+  },
+  "instance.backups.unavailable.symlink": {
+    "message": "Imported symbolic-link instances cannot be backed up."
+  },
   "instance.edit-server.title": {
     "message": "Edit server"
   },
@@ -8495,6 +11741,33 @@
   "instance.server-modal.resource-pack": {
     "message": "Resource pack"
   },
+  "instance.settings.sync.command-history": {
+    "message": "Command history"
+  },
+  "instance.settings.sync.creative-hotbars": {
+    "message": "Creative hotbars"
+  },
+  "instance.settings.sync.description": {
+    "message": "Choose which settings this instance shares with other instances."
+  },
+  "instance.settings.sync.game-options": {
+    "message": "Game settings"
+  },
+  "instance.settings.sync.multiplayer-servers": {
+    "message": "Multiplayer servers"
+  },
+  "instance.settings.sync.resource-packs": {
+    "message": "Resource packs"
+  },
+  "instance.settings.sync.title": {
+    "message": "Settings synchronization"
+  },
+  "instance.settings.sync.unsupported": {
+    "message": "Unavailable for this instance"
+  },
+  "instance.settings.tabs.backups": {
+    "message": "Backups"
+  },
   "instance.settings.tabs.core-components": {
     "message": "Core components"
   },
@@ -8585,6 +11858,21 @@
   "instance.settings.tabs.general.deleting.button": {
     "message": "Deleting..."
   },
+  "instance.settings.tabs.general.desktop-shortcut": {
+    "message": "Desktop shortcut"
+  },
+  "instance.settings.tabs.general.desktop-shortcut.create": {
+    "message": "Create desktop shortcut"
+  },
+  "instance.settings.tabs.general.desktop-shortcut.created": {
+    "message": "Desktop shortcut created"
+  },
+  "instance.settings.tabs.general.desktop-shortcut.creating": {
+    "message": "Creating shortcut..."
+  },
+  "instance.settings.tabs.general.desktop-shortcut.description": {
+    "message": "Create a desktop shortcut that launches this instance directly."
+  },
   "instance.settings.tabs.general.duplicate-button": {
     "message": "Duplicate"
   },
@@ -8617,6 +11905,9 @@
   },
   "instance.settings.tabs.general.game-dir.description": {
     "message": "Uses a separate folder as the working directory for this instance. The game reads mods, saves, configs, and resource packs from that folder instead of the managed instance folder."
+  },
+  "instance.settings.tabs.general.game-dir.external-note": {
+    "message": "This instance uses an external .minecraft folder managed in place."
   },
   "instance.settings.tabs.general.game-dir.isolated": {
     "message": "Version isolated (stored in versions/)"
@@ -8661,13 +11952,22 @@
     "message": "Select update channel"
   },
   "instance.settings.tabs.hooks": {
-    "message": "Launch hooks"
+    "message": "Launch preparation"
   },
   "instance.settings.tabs.hooks.custom-hooks": {
     "message": "Custom launch hooks"
   },
+  "instance.settings.tabs.hooks.custom-launch-preparation-timeout": {
+    "message": "Use a custom launch preparation timeout"
+  },
   "instance.settings.tabs.hooks.description": {
-    "message": "Hooks allow advanced users to run certain system commands before and after launching the game."
+    "message": "Configure the time allowed for launch preparation and optional commands that run before and after the game."
+  },
+  "instance.settings.tabs.hooks.launch-preparation-timeout": {
+    "message": "Launch preparation timeout"
+  },
+  "instance.settings.tabs.hooks.launch-preparation-timeout.description": {
+    "message": "Maximum time to wait for launch preparation to finish, in seconds (30–600)."
   },
   "instance.settings.tabs.hooks.post-exit": {
     "message": "Post-exit"
@@ -8688,7 +11988,7 @@
     "message": "Enter pre-launch command..."
   },
   "instance.settings.tabs.hooks.title": {
-    "message": "Game launch hooks"
+    "message": "Launch preparation"
   },
   "instance.settings.tabs.hooks.wrapper": {
     "message": "Wrapper"
@@ -8750,6 +12050,9 @@
   "instance.settings.tabs.java.optimize-memory-before-launch-description": {
     "message": "Waits for Windows memory optimization to finish before starting the game."
   },
+  "instance.settings.tabs.sync": {
+    "message": "Synchronization"
+  },
   "instance.settings.tabs.window": {
     "message": "Window"
   },
@@ -8771,6 +12074,15 @@
   "instance.settings.tabs.window.height.enter": {
     "message": "Enter height..."
   },
+  "instance.settings.tabs.window.maximize-window": {
+    "message": "Maximize window"
+  },
+  "instance.settings.tabs.window.maximize-window.description": {
+    "message": "Maximize the Minecraft window when launched."
+  },
+  "instance.settings.tabs.window.maximize-window.unsupported": {
+    "message": "Not supported on this operating system."
+  },
   "instance.settings.tabs.window.width": {
     "message": "Width"
   },
@@ -8779,6 +12091,15 @@
   },
   "instance.settings.tabs.window.width.enter": {
     "message": "Enter width..."
+  },
+  "instance.settings.tabs.window.window-title": {
+    "message": "Window title"
+  },
+  "instance.settings.tabs.window.window-title.description": {
+    "message": "Customize the Minecraft window title. Leave empty to keep the default."
+  },
+  "instance.settings.tabs.window.window-title.enter": {
+    "message": "Enter window title..."
   },
   "instance.upgrade.action.add-dependency": {
     "message": "Add dependency"
@@ -9890,6 +13211,24 @@
   "minecraft-account.remove-account": {
     "message": "Remove account"
   },
+  "minecraft-account.restriction.buy": {
+    "message": "Buy Minecraft"
+  },
+  "minecraft-account.restriction.description": {
+    "message": "Sign in with an official Minecraft account on this device before creating or using offline accounts. If you do not own Minecraft yet, you can purchase it from the official website."
+  },
+  "minecraft-account.restriction.open-failed": {
+    "message": "Could not open the Minecraft store"
+  },
+  "minecraft-account.restriction.open-failed-description": {
+    "message": "Try again, or open https://www.minecraft.net in your browser to purchase Minecraft."
+  },
+  "minecraft-account.restriction.sign-in": {
+    "message": "Sign in with Minecraft"
+  },
+  "minecraft-account.restriction.title": {
+    "message": "Offline accounts are unavailable"
+  },
   "minecraft-account.select-account": {
     "message": "Select account"
   },
@@ -9944,6 +13283,30 @@
   "minecraft-account.third-party-profile.title": {
     "message": "Select a profile"
   },
+  "minecraft-login.browser": {
+    "message": "Use browser login"
+  },
+  "minecraft-login.device-code": {
+    "message": "Use device code"
+  },
+  "minecraft-login.device-description": {
+    "message": "Open the page below on any device, then enter this code."
+  },
+  "minecraft-login.device-expired": {
+    "message": "This device code expired. Start again to receive a new code."
+  },
+  "minecraft-login.device-starting": {
+    "message": "Requesting a device code..."
+  },
+  "minecraft-login.open-verification": {
+    "message": "Open verification page"
+  },
+  "minecraft-login.title": {
+    "message": "Sign in to Minecraft"
+  },
+  "minecraft-login.trouble": {
+    "message": "Having trouble?"
+  },
   "project.actions.view-dependents": {
     "message": "View dependents"
   },
@@ -9985,6 +13348,36 @@
   },
   "search.filter.locked.server-loader.title": {
     "message": "Loader is provided by the server"
+  },
+  "settings.backups.repository.change": {
+    "message": "Change folder"
+  },
+  "settings.backups.repository.description": {
+    "message": "Deduplicated instance backup data and its independent index database."
+  },
+  "settings.backups.repository.location": {
+    "message": "Location"
+  },
+  "settings.backups.repository.location-description": {
+    "message": "Changing the location moves the complete repository. Choose a new or empty folder."
+  },
+  "settings.backups.repository.moving": {
+    "message": "Moving repository..."
+  },
+  "settings.backups.repository.moving-progress": {
+    "message": "Moving repository: {processed} of {total}"
+  },
+  "settings.backups.repository.title": {
+    "message": "Backup repository"
+  },
+  "settings.backups.repository.unavailable": {
+    "message": "Repository unavailable"
+  },
+  "settings.backups.repository.usage": {
+    "message": "Storage usage"
+  },
+  "settings.backups.repository.usage-description": {
+    "message": "{stored} stored for {logical} of backup data across {count, plural, one {# snapshot} other {# snapshots}}."
   },
   "settings.feature-flags.title": {
     "message": "Feature flags"

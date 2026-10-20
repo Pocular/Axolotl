@@ -18,7 +18,7 @@ import { invoke } from '@tauri-apps/api/core'
  * not reachable.
  */
 export async function check_reachable() {
-	await invoke('plugin:auth|check_reachable')
+    await invoke('plugin:auth|check_reachable')
 }
 
 /**
@@ -26,7 +26,14 @@ export async function check_reachable() {
  * individual reachability states.
  */
 export async function check_mojang_services() {
-	return await invoke('plugin:auth|check_mojang_services')
+    return await invoke('plugin:auth|check_mojang_services')
+}
+
+/**
+ * Whether Mojang service requests currently go out through the Fallen proxy.
+ */
+export async function mojang_auth_use_mirror() {
+    return await invoke('plugin:auth|mojang_auth_use_mirror')
 }
 
 /**
@@ -37,32 +44,44 @@ export async function check_mojang_services() {
  * @property {string} verification_uri - The URL to go to complete the flow.
  * @property {string} user_code - The code to enter on the verification_uri page.
  */
-export async function login() {
-	return await invoke('plugin:auth|login')
+export async function login(troubleLinks) {
+    return await invoke('plugin:auth|login', { troubleLinks })
+}
+
+export async function browser_login() {
+    return await invoke('plugin:auth|browser_login')
+}
+
+export async function begin_device_login() {
+    return await invoke('plugin:auth|begin_device_login')
+}
+
+export async function poll_device_login(deviceCode) {
+    return await invoke('plugin:auth|poll_device_login', { deviceCode })
 }
 
 export async function begin_yggdrasil_login(apiRoot, login, password) {
-	return await invoke('plugin:auth|begin_yggdrasil_login', { apiRoot, login, password })
+    return await invoke('plugin:auth|begin_yggdrasil_login', { apiRoot, login, password })
 }
 
 export async function finish_yggdrasil_login(flowId, profileId) {
-	return await invoke('plugin:auth|finish_yggdrasil_login', { flowId, profileId })
+    return await invoke('plugin:auth|finish_yggdrasil_login', { flowId, profileId })
 }
 
 export async function list_yggdrasil_saved_logins() {
-	return await invoke('plugin:auth|list_yggdrasil_saved_logins')
+    return await invoke('plugin:auth|list_yggdrasil_saved_logins')
 }
 
 export async function get_yggdrasil_password(apiRoot, login) {
-	return await invoke('plugin:auth|get_yggdrasil_password', { apiRoot, login })
+    return await invoke('plugin:auth|get_yggdrasil_password', { apiRoot, login })
 }
 
 export async function set_yggdrasil_password(apiRoot, login, password) {
-	return await invoke('plugin:auth|set_yggdrasil_password', { apiRoot, login, password })
+    return await invoke('plugin:auth|set_yggdrasil_password', { apiRoot, login, password })
 }
 
 export async function delete_yggdrasil_password(apiRoot, login) {
-	return await invoke('plugin:auth|delete_yggdrasil_password', { apiRoot, login })
+    return await invoke('plugin:auth|delete_yggdrasil_password', { apiRoot, login })
 }
 
 /**
@@ -72,10 +91,18 @@ export async function delete_yggdrasil_password(apiRoot, login) {
  * @returns {Promise<Credential>}
  */
 export async function add_offline_user(username, uuid) {
-	return await invoke('plugin:auth|add_offline_user', {
-		username,
-		...(uuid ? { uuid } : {}),
-	})
+    return await invoke('plugin:auth|add_offline_user', {
+        username,
+        ...(uuid ? { uuid } : {}),
+    })
+}
+
+export async function get_anti_piracy_status() {
+    return await invoke('plugin:auth|get_anti_piracy_status')
+}
+
+export async function clear_official_login_marker() {
+    return await invoke('plugin:auth|clear_official_login_marker')
 }
 
 /**
@@ -83,7 +110,7 @@ export async function add_offline_user(username, uuid) {
  * @return {Promise<UUID | undefined>}
  */
 export async function get_default_user(offlineMode = false) {
-	return await invoke('plugin:auth|get_default_user', { offlineMode })
+    return await invoke('plugin:auth|get_default_user', { offlineMode })
 }
 
 /**
@@ -91,7 +118,7 @@ export async function get_default_user(offlineMode = false) {
  * @param {UUID} user
  */
 export async function set_default_user(user) {
-	return await invoke('plugin:auth|set_default_user', { user })
+    return await invoke('plugin:auth|set_default_user', { user })
 }
 
 /**
@@ -99,7 +126,7 @@ export async function set_default_user(user) {
  * @param {UUID} user
  */
 export async function remove_user(user) {
-	return await invoke('plugin:auth|remove_user', { user })
+    return await invoke('plugin:auth|remove_user', { user })
 }
 
 /**
@@ -107,5 +134,5 @@ export async function remove_user(user) {
  * @returns {Promise<Credential[]>}
  */
 export async function users(offlineMode = false) {
-	return await invoke('plugin:auth|get_users', { offlineMode })
+    return await invoke('plugin:auth|get_users', { offlineMode })
 }

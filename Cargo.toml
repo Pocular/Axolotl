@@ -49,6 +49,7 @@ encoding_rs = "0.8.35"
 enumset = "1.1.10"
 eyre = "0.6.12"
 flate2 = "1.1.4"
+fontdb = "0.24.0"
 fs4 = { version = "0.13.1", default-features = false }
 futures = "0.3.31"
 futures-lite = "2.6.1"
@@ -59,6 +60,7 @@ hmac = "0.12.1"
 http = "1.3.1"
 hyper = "1.7.0"
 hyper-util = "0.1.17"
+iana-time-zone = "0.1.65"
 image = { version = "0.25.5", default-features = false, features = [
   "jpeg",
   "png",
@@ -82,6 +84,7 @@ paste = "1.0.15"
 path-util = { path = "packages/path-util" }
 phf = { version = "0.13.1", features = ["macros"] }
 png = "0.18.0"
+portable-pty = "0.9.0"
 quartz_nbt = "0.2.9"
 quick-xml = "0.38.3"
 rand = "=0.8.5"  # Locked on 0.8 until p256 updates to 0.9
@@ -202,11 +205,20 @@ wildcard_dependencies = "warn"
 tauri-plugin-window-state = { git = "https://github.com/Lintern/plugins-workspace", branch = "v2" }
 
 [profile.dev]
-incremental = false
+# Keep incremental on (Cargo default). Disabling it forces full crate rebuilds
+# of ~170k-line app-lib on every touch and made local app:dev unusably slow.
 
-# Optimize for speed and reduce size on release builds
+# sqlx-macros does heavy compile-time work; unoptimized expansion is a known
+# local rebuild tax. Keep this override.
+[profile.dev.package.sqlx-macros]
+opt-level = 3
+
+# Optimize for speed and reduce size on release builds.
+# LTO stays off for local `pnpm app:build` and PR CI packaging. Tagged
+# releases re-enable fat LTO with CARGO_PROFILE_RELEASE_LTO=true.
+# panic stays at Cargo's default unwind: spawn_blocking JoinError recovery
+# throughout app-lib assumes panics are catchable per-task, not process abort.
 [profile.release]
 opt-level = "s"  # Optimize for binary size
 strip = true  # Remove debug symbols
-lto = true  # Enables link to optimizations
-panic = "abort"  # Strip expensive panic clean-up logic
+lto = false

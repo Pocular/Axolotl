@@ -1,5 +1,9 @@
 //! Minecraft CLI argument logic
 use crate::instance::QuickPlayType;
+use crate::launcher::direct_link::{
+    DirectLinkedLaunch, is_native_only_library,
+};
+use crate::launcher::local_version::LinkedLibrary;
 use crate::launcher::quick_play_version::QuickPlayServerVersion;
 use crate::launcher::{QuickPlayVersion, parse_rules};
 use crate::state::Credentials;
@@ -84,14 +88,80 @@ pub fn get_class_paths(
                 .to_string())
         })
         .chain(libraries.into_iter().rev().map(|library| {
-            get_lib_path(
-                libraries_path,
-                &library.name,
-                library.natives.is_some(),
-            )
+            // A merged library carrying both a Java artifact and native
+            // classifiers (e.g. LWJGL) must have its JAR present on disk.
+            // Pure native libraries (no Java artifact) remain tolerated
+            // when absent, matching the pre-existing classpath behaviour.
+            let allow_not_exist =
+                crate::launcher::download::is_native_library(library)
+                    && !crate::launcher::download::needs_java_artifact(library);
+            get_lib_path(libraries_path, &library.name, allow_not_exist)
         }))
         .process_results(|iter| {
             iter.unique().join(classpath_separator(java_arch))
+        })
+}
+
+pub fn get_linked_class_paths(
+    direct: &DirectLinkedLaunch,
+    libraries: &[LinkedLibrary],
+    launcher_class_path: &[&Path],
+    java_arch: &str,
+    minecraft_updated: bool,
+) -> crate::Result<String> {
+    launcher_class_path
+        .iter()
+        .map(|path| {
+            Ok(canonicalize(path)
+                .map_err(|error| {
+                    crate::ErrorKind::LauncherError(format!(
+                        "Specified class path {} does not exist: {error}",
+                        path.display()
+                    ))
+                    .as_error()
+                })?
+                .to_string_lossy()
+                .to_string())
+        })
+        .chain(libraries.iter().filter_map(|library| {
+            if let Some(rules) = library.library.rules.as_deref()
+                && !parse_rules(
+                    rules,
+                    java_arch,
+                    &QuickPlayType::None,
+                    minecraft_updated,
+                )
+            {
+                return None;
+            }
+            if !library.library.include_in_classpath {
+                return None;
+            }
+            // A natives-only declaration (e.g. the 1.12.2
+            // `net.java.jinput:jinput-platform:2.0.5`) publishes no plain jar
+            // anywhere, so it must never become a classpath entry. This
+            // mirrors HMCL's `DefaultLauncher.getClasspath`, which contributes
+            // natives libraries only through native extraction; the same
+            // predicate keeps the ensure stage from planning the plain jar.
+            if is_native_only_library(&library.library) {
+                return None;
+            }
+
+            Some(direct.library_path(library).and_then(|path| {
+                canonicalize(&path)
+                    .map(|path| path.to_string_lossy().to_string())
+                    .map_err(|error| {
+                        crate::ErrorKind::LauncherError(format!(
+                            "Could not resolve linked library {} at {}: {error}",
+                            library.library.name,
+                            path.display()
+                        ))
+                        .as_error()
+                    })
+            }))
+        }))
+        .process_results(|paths| {
+            paths.unique().join(classpath_separator(java_arch))
         })
 }
 
@@ -285,6 +355,7 @@ pub async fn get_minecraft_arguments(
     asset_index_name: &str,
     game_directory: &Path,
     assets_directory: &Path,
+    game_assets_directory: &Path,
     version_type: &VersionType,
     resolution: WindowSize,
     java_arch: &str,
@@ -340,6 +411,7 @@ pub async fn get_minecraft_arguments(
                 asset_index_name,
                 game_directory,
                 assets_directory,
+                game_assets_directory,
                 version_type,
                 resolution,
                 quick_play_type,
@@ -362,6 +434,7 @@ pub async fn get_minecraft_arguments(
                     asset_index_name,
                     game_directory,
                     assets_directory,
+                    game_assets_directory,
                     version_type,
                     resolution,
                     quick_play_type,
@@ -398,6 +471,7 @@ fn parse_minecraft_argument(
     asset_index_name: &str,
     game_directory: &Path,
     assets_directory: &Path,
+    game_assets_directory: &Path,
     version_type: &VersionType,
     resolution: WindowSize,
     quick_play_type: &QuickPlayType,
@@ -442,11 +516,11 @@ fn parse_minecraft_argument(
         )
         .replace(
             "${game_assets}",
-            &canonicalize(assets_directory)
+            &canonicalize(game_assets_directory)
                 .map_err(|_| {
                     crate::ErrorKind::LauncherError(format!(
                         "Specified assets directory {} does not exist",
-                        assets_directory.to_string_lossy()
+                        game_assets_directory.to_string_lossy()
                     ))
                     .as_error()
                 })?
@@ -617,7 +691,50 @@ pub async fn get_processor_main_class(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::launcher::direct_link::LinkedLauncherDialect;
     use crate::launcher::quick_play_version::QuickPlaySingleplayerVersion;
+    use serde_json::json;
+
+    #[test]
+    fn universal_os_arguments_still_require_the_declared_architecture() {
+        let arguments: Vec<Argument> = serde_json::from_value(serde_json::json!([
+            "-Dalways=true",
+            {
+                "rules": [{"action": "allow", "os": {"name": "universal"}}],
+                "value": "-Duniversal=true"
+            },
+            {
+                "rules": [{"action": "allow", "os": {"name": "universal", "arch": "x86"}}],
+                "value": ["-Xss1M"]
+            }
+        ]))
+        .unwrap();
+
+        for (architecture, uses_x86_argument) in [
+            ("x86", true),
+            ("i386", true),
+            ("i686", true),
+            ("x86_64", false),
+            ("amd64", false),
+            ("aarch64", false),
+            ("arm64", false),
+        ] {
+            let mut parsed = Vec::new();
+            parse_arguments(
+                &arguments,
+                &mut parsed,
+                |argument| Ok(argument.to_string()),
+                architecture,
+                &QuickPlayType::None,
+            )
+            .unwrap();
+            let mut expected = vec!["-Dalways=true", "-Duniversal=true"];
+            if uses_x86_argument {
+                expected.push("-Xss1M");
+            }
+            assert_eq!(parsed, expected, "Java architecture: {architecture}");
+        }
+    }
 
     #[tokio::test]
     async fn mixed_legacy_and_modern_game_arguments_are_both_preserved() {
@@ -639,6 +756,7 @@ mod tests {
             "1.12.2",
             "1.12",
             &game_directory,
+            &assets_directory,
             &assets_directory,
             &VersionType::Release,
             WindowSize(854, 480),
@@ -662,13 +780,83 @@ mod tests {
         assert_eq!(&parsed[4..], ["--tweakClass", "example.LiteLoaderTweaker"]);
     }
 
+    #[test]
+    fn linked_classpath_uses_download_and_local_paths_and_skips_native_only() {
+        let root = tempfile::tempdir().unwrap();
+        let artifact = root.path().join("libraries/custom/a.jar");
+        let local = root.path().join("versions/demo/libraries/local.jar");
+        let main = root.path().join("main.jar");
+        let client = root.path().join("client.jar");
+        std::fs::create_dir_all(artifact.parent().unwrap()).unwrap();
+        std::fs::create_dir_all(local.parent().unwrap()).unwrap();
+        std::fs::write(&artifact, b"artifact").unwrap();
+        std::fs::write(&local, b"local").unwrap();
+        std::fs::write(&main, b"main").unwrap();
+        std::fs::write(&client, b"client").unwrap();
+
+        let libraries: Vec<LinkedLibrary> = serde_json::from_value(json!([
+            {
+                "name":"x:artifact:1",
+                "downloads":{"artifact":{"path":"custom/a.jar", "sha1":"", "size":0, "url":""}}
+            },
+            {
+                "name":"x:local:1",
+                "MMC-hint":"local",
+                "MMC-filename":"local.jar"
+            },
+            {
+                "name":"x:native:1",
+                "natives":{"linux":"natives-linux"},
+                "downloads":{"classifiers":{"natives-linux":{"path":"unused.jar", "sha1":"", "size":0, "url":""}}}
+            }
+        ]))
+        .unwrap();
+        let direct = DirectLinkedLaunch {
+            dot_minecraft: root.path().to_path_buf(),
+            launcher_root: None,
+            version_id: "demo".to_string(),
+            version_json: None,
+            dialect: LinkedLauncherDialect::Hmcl,
+            game_dir_mode: None,
+        };
+
+        let classpath = get_linked_class_paths(
+            &direct,
+            &libraries,
+            &[&main, &client],
+            std::env::consts::ARCH,
+            true,
+        )
+        .unwrap();
+        let paths = classpath
+            .split(classpath_separator(std::env::consts::ARCH))
+            .collect::<Vec<_>>();
+        assert!(
+            paths.contains(
+                &canonicalize(main).unwrap().to_string_lossy().as_ref()
+            )
+        );
+        assert!(paths.contains(
+            &canonicalize(client).unwrap().to_string_lossy().as_ref()
+        ));
+        assert!(paths.contains(
+            &canonicalize(artifact).unwrap().to_string_lossy().as_ref()
+        ));
+        assert!(paths.contains(
+            &canonicalize(local).unwrap().to_string_lossy().as_ref()
+        ));
+        assert_eq!(paths.len(), 4);
+    }
+
     #[tokio::test]
     async fn legacy_options_duplicated_by_modern_arguments_are_dropped() {
         let directory = tempfile::tempdir().unwrap();
         let game_directory = directory.path().join("instance");
         let assets_directory = directory.path().join("assets");
+        let game_assets_directory = directory.path().join("resources");
         std::fs::create_dir_all(&game_directory).unwrap();
         std::fs::create_dir_all(&assets_directory).unwrap();
+        std::fs::create_dir_all(&game_assets_directory).unwrap();
         let credentials = Credentials::offline("Player").unwrap();
 
         // 1.6.4-era Forge profiles repeat `minecraftArguments` verbatim inside
@@ -698,6 +886,7 @@ mod tests {
             "legacy",
             &game_directory,
             &assets_directory,
+            &game_assets_directory,
             &VersionType::Release,
             WindowSize(854, 480),
             "x86_64",
@@ -728,6 +917,16 @@ mod tests {
                 &"cpw.mods.fml.common.launcher.FMLTweaker".to_string()
             )
         );
+        let assets_dir_position = parsed
+            .iter()
+            .position(|argument| argument == "--assetsDir")
+            .unwrap();
+        assert_eq!(
+            parsed[assets_dir_position + 1],
+            canonicalize(&game_assets_directory)
+                .unwrap()
+                .to_string_lossy()
+        );
 
         // Legacy-only options still pass through unchanged.
         let parsed = get_minecraft_arguments(
@@ -738,6 +937,7 @@ mod tests {
             "legacy",
             &game_directory,
             &assets_directory,
+            &game_assets_directory,
             &VersionType::Release,
             WindowSize(854, 480),
             "x86_64",

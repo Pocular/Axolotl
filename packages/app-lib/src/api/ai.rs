@@ -19,7 +19,7 @@ use uuid::Uuid;
 
 use crate::{ErrorKind, State};
 
-const CATALOG_SOURCE: &str = "LobeHub 363797b1eddc01d1d6f07e28148b200618c2d0a2";
+const CATALOG_SOURCE: &str = "LobeHub 6c7a6fb033e443bc27bf34cbd5509ab3db7f22f3";
 const KEYRING_PREFIX: &str = "ai-provider";
 const OAUTH_CREDENTIAL: &str = "oauth";
 const API_KEY_CREDENTIAL: &str = "api-key";
@@ -1311,8 +1311,11 @@ fn credential_entry(
     credential: &str,
 ) -> crate::Result<Entry> {
     provider_definition(provider_id)?;
+    // Same name the data directory uses, so a build with its own directory
+    // (AXOLOTL_DATA_DIR_SUFFIX) also keeps its own credentials. A release
+    // resolves to the plain identifier and is unaffected.
     Entry::new(
-        crate::brand::BUNDLE_IDENTIFIER,
+        &crate::brand::app_data_dir_identifier(crate::brand::BUNDLE_IDENTIFIER),
         &format!("{KEYRING_PREFIX}:{provider_id}:{credential}"),
     )
     .map_err(|error| {
@@ -1907,8 +1910,7 @@ fn openai_content(value: &Value) -> Option<String> {
         .flatten()
         .filter_map(|item| item.get("content").and_then(Value::as_array))
         .flatten()
-        .filter_map(|item| item.get("text").and_then(Value::as_str))
-        .next()
+        .find_map(|item| item.get("text").and_then(Value::as_str))
         .map(str::to_string)
 }
 

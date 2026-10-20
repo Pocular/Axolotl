@@ -30,7 +30,196 @@ pub enum InstallPauseReason {
 #[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum InstallContinuationState {
-    InstallingPackToExistingInstance { disabled_project_ids: Vec<String> },
+    InstallingPackToExistingInstance {
+        disabled_project_ids: Vec<String>,
+    },
+    ChangeContent {
+        #[serde(default)]
+        version: u32,
+        actions: Vec<ContentChangeAction>,
+    },
+}
+
+pub const CONTENT_CHANGE_PLAN_VERSION: u32 = 2;
+
+#[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq)]
+pub struct ContentChangeTarget {
+    pub content_id: String,
+    pub target_release_id: String,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum ContentChangeIntent {
+    UpdateOne {
+        content_id: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        target_release_id: Option<String>,
+    },
+    UpdateSelected {
+        targets: Vec<ContentChangeTarget>,
+    },
+    UpdateAllUserAdded,
+    SwitchVersion {
+        content_id: String,
+        target_release_id: String,
+    },
+}
+
+#[derive(
+    Serialize, Deserialize, Clone, Copy, Debug, Default, Eq, PartialEq,
+)]
+#[serde(rename_all = "snake_case")]
+pub enum ContentChangeOperation {
+    #[default]
+    Update,
+    SwitchVersion,
+}
+
+#[derive(
+    Serialize, Deserialize, Clone, Copy, Debug, Default, Eq, PartialEq,
+)]
+#[serde(rename_all = "snake_case")]
+pub enum ContentChangeActionStatus {
+    #[default]
+    Pending,
+    Prepared,
+    Downloaded,
+    WaitingForUser,
+    Applying,
+    Completed,
+    Skipped,
+    Failed,
+}
+
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, Eq, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub enum ContentChangeFileRole {
+    Primary,
+    Dependency,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, Default, Eq, PartialEq)]
+pub struct ContentChangeFileIntegrity {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub size: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sha1: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sha512: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sha256: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub md5: Option<String>,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq)]
+pub struct ContentChangeFile {
+    pub id: String,
+    pub role: ContentChangeFileRole,
+    pub provider: ContentProvider,
+    pub project_id: String,
+    pub release_id: String,
+    pub file_name: String,
+    pub target_relative_path: String,
+    #[serde(default)]
+    pub urls: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub manual_download_url: Option<String>,
+    #[serde(default)]
+    pub integrity: ContentChangeFileIntegrity,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq)]
+pub struct ContentChangeDependency {
+    pub parent_file_id: String,
+    pub child_file_id: String,
+    pub provider: ContentProvider,
+    pub project_id: String,
+    pub release_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub kind: Option<crate::state::instances::ContentDependencyKind>,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq)]
+pub struct ContentChangeAction {
+    pub content_id: String,
+    #[serde(default)]
+    pub operation: ContentChangeOperation,
+    pub provider: ContentProvider,
+    pub project_id: Option<String>,
+    pub expected_release_id: Option<String>,
+    pub target_release_id: String,
+    pub relative_path: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub current_provider_file_name: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub target_provider_file_name: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub final_relative_path: Option<String>,
+    #[serde(default)]
+    pub files: Vec<ContentChangeFile>,
+    #[serde(default)]
+    pub dependencies: Vec<ContentChangeDependency>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub modrinth_plan: Option<modrinth_content_management::ResolveContentPlan>,
+    #[serde(default)]
+    pub status: ContentChangeActionStatus,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
+    // Read old continuations that only persisted a completion flag. New
+    // continuations use `status`, but retaining this field keeps old jobs
+    // retryable without changing their frozen target release.
+    #[serde(default)]
+    pub completed: bool,
+}
+
+impl ContentChangeAction {
+    pub fn effective_status(&self) -> ContentChangeActionStatus {
+        if self.completed && self.status == ContentChangeActionStatus::Pending {
+            ContentChangeActionStatus::Completed
+        } else {
+            self.status
+        }
+    }
+
+    pub fn is_complete(&self) -> bool {
+        matches!(
+            self.effective_status(),
+            ContentChangeActionStatus::Completed
+                | ContentChangeActionStatus::Skipped
+        )
+    }
+
+    pub fn set_status(&mut self, status: ContentChangeActionStatus) {
+        self.status = status;
+        self.completed = matches!(
+            status,
+            ContentChangeActionStatus::Completed
+                | ContentChangeActionStatus::Skipped
+        );
+        if status != ContentChangeActionStatus::Failed {
+            self.error = None;
+        }
+    }
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq)]
+pub struct ContentChangeActionSnapshot {
+    pub content_id: String,
+    pub operation: ContentChangeOperation,
+    pub target_release_id: String,
+    pub final_relative_path: Option<String>,
+    pub status: ContentChangeActionStatus,
+    pub error: Option<String>,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq)]
+pub struct ContentChangeSnapshot {
+    pub intent: ContentChangeIntent,
+    pub content_ids: Vec<String>,
+    pub plan_version: Option<u32>,
+    pub actions: Vec<ContentChangeActionSnapshot>,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -45,7 +234,9 @@ pub struct InstallJobState {
     pub context: Option<InstallErrorContext>,
     #[serde(default)]
     pub events: Vec<InstallJobEvent>,
-    #[serde(default, skip_serializing_if = "HashMap::is_empty")]
+    /// Live request state used for progress snapshots. Download resumption is
+    /// based on persisted events and filesystem state, not partial byte counts.
+    #[serde(skip)]
     pub active_downloads: HashMap<String, ActiveDownloadState>,
     #[serde(default)]
     pub display: Option<InstallJobDisplay>,
@@ -106,7 +297,10 @@ impl InstallJobState {
         let target = request.target();
         let cleanup = request.cleanup();
         let kind = request.kind();
-        let phase = InstallPhaseId::PreparingInstance;
+        // Content installs do not create or prepare an instance. Start them in
+        // the content phase so the download center never presents them as an
+        // instance setup task while the worker is being scheduled.
+        let phase = initial_phase_for_request(&request);
 
         Self {
             schema_version: 1,
@@ -211,6 +405,21 @@ impl InstallJobState {
         self.progress.phase = phase;
         self.progress.progress = progress;
         self.progress.details = details;
+    }
+}
+
+pub(crate) fn initial_phase_for_request(
+    request: &InstallRequest,
+) -> InstallPhaseId {
+    match request {
+        InstallRequest::InstallContent { .. }
+        | InstallRequest::InstallCurseForgeContent { .. }
+        | InstallRequest::InstallCurseForgeWorld { .. }
+        | InstallRequest::InstallContentBatch { .. }
+        | InstallRequest::ChangeContent { .. } => {
+            InstallPhaseId::DownloadingContent
+        }
+        _ => InstallPhaseId::PreparingInstance,
     }
 }
 
@@ -332,6 +541,7 @@ mod tests {
             });
         job.rollback = Some(InstallRollbackState {
             instance: InstanceMetadata {
+                synced_options: Default::default(),
                 instance: Instance {
                     id: instance_id.clone(),
                     path: "instance".to_string(),
@@ -343,6 +553,12 @@ mod tests {
                     name: "Test".to_string(),
                     icon_path: None,
                     symlink_target: None,
+                    linked_launcher: None,
+                    linked_launcher_root: None,
+                    linked_dot_minecraft: None,
+                    linked_version_id: None,
+                    linked_version_json_path: None,
+                    linked_game_dir_mode: None,
                     game_dir_override: None,
                     created: now,
                     modified: now,
@@ -461,7 +677,7 @@ mod tests {
         assert_eq!(summary.bytes_total, Some(300));
         let items = job.download_items();
         assert_eq!(items.len(), 3);
-        assert_eq!(items[0].status, DownloadItemStatus::Completed);
+        assert_eq!(items[0].status, DownloadItemStatus::Verifying);
         assert_eq!(items[0].attempt, Some(1));
         assert_eq!(items[0].max_attempts, Some(4));
         assert_eq!(
@@ -773,6 +989,14 @@ mod tests {
         assert_eq!(summary.speed_bytes_per_second, Some(200));
         assert_eq!(summary.eta_seconds, Some(3));
 
+        job.active_downloads.get_mut("client.jar").unwrap().status =
+            DownloadItemStatus::Verifying;
+        let verifying = job.download_summary();
+        assert_eq!(verifying.speed_bytes_per_second, None);
+        assert_eq!(verifying.eta_seconds, None);
+        job.active_downloads.get_mut("client.jar").unwrap().status =
+            DownloadItemStatus::Downloading;
+
         job.active_downloads
             .get_mut("client.jar")
             .unwrap()
@@ -784,6 +1008,36 @@ mod tests {
             phase: InstallPhaseId::DownloadingMinecraft,
         });
         assert!(job.active_downloads.is_empty());
+    }
+
+    #[test]
+    fn active_downloads_are_not_persisted() {
+        let mut job = job_state();
+        job.active_downloads.insert(
+            "client.jar".to_string(),
+            ActiveDownloadState {
+                name: "client.jar".to_string(),
+                url: "https://piston-data.mojang.com/client.jar".to_string(),
+                source: "official".to_string(),
+                bytes_downloaded: 400,
+                bytes_total: Some(1_000),
+                attempt: 1,
+                max_attempts: 3,
+                status: DownloadItemStatus::Downloading,
+                last_reported_bytes: 400,
+                last_progress_at: Utc::now(),
+                speed_bytes_per_second: Some(200),
+                speed_sample_started_at: Utc::now(),
+                speed_sample_started_bytes: 400,
+            },
+        );
+
+        let serialized = serde_json::to_value(&job).unwrap();
+        assert!(serialized.get("active_downloads").is_none());
+
+        let restored: InstallJobState =
+            serde_json::from_value(serialized).unwrap();
+        assert!(restored.active_downloads.is_empty());
     }
 
     #[test]
@@ -1064,6 +1318,125 @@ mod tests {
         assert_eq!(
             InstallJobKind::from_stored_str("upgrade_unmanaged_instance"),
             InstallJobKind::UpgradeUnmanagedInstance
+        );
+    }
+
+    #[test]
+    fn content_change_request_is_persistent_and_round_trips() {
+        let request = InstallRequest::ChangeContent {
+            instance_id: "instance".to_string(),
+            intent: ContentChangeIntent::SwitchVersion {
+                content_id: "entry".to_string(),
+                target_release_id: "target".to_string(),
+            },
+            display_title: "Example".to_string(),
+            display_icon: None,
+        };
+        assert_eq!(request.kind(), InstallJobKind::ChangeContent);
+        assert_eq!(request.kind().as_str(), "change_content");
+        assert_eq!(
+            InstallJobKind::from_stored_str("change_content"),
+            InstallJobKind::ChangeContent
+        );
+        assert_eq!(request.cleanup(), InstallCleanup::None);
+        assert_eq!(
+            request.target(),
+            InstallTarget::ExistingInstance {
+                instance_id: "instance".to_string()
+            }
+        );
+
+        let restored: InstallRequest =
+            serde_json::from_value(serde_json::to_value(&request).unwrap())
+                .unwrap();
+        assert!(matches!(
+            restored,
+            InstallRequest::ChangeContent {
+                intent: ContentChangeIntent::SwitchVersion {
+                    content_id,
+                    target_release_id
+                },
+                ..
+            } if content_id == "entry" && target_release_id == "target"
+        ));
+    }
+
+    #[test]
+    fn content_change_snapshot_uses_persisted_action_ids() {
+        let mut state = InstallJobState::new(InstallRequest::ChangeContent {
+            instance_id: "instance".to_string(),
+            intent: ContentChangeIntent::UpdateAllUserAdded,
+            display_title: "Update content".to_string(),
+            display_icon: None,
+        });
+        assert_eq!(
+            state.content_change().unwrap().content_ids,
+            Vec::<String>::new()
+        );
+        state.continuation = Some(InstallContinuationState::ChangeContent {
+            version: CONTENT_CHANGE_PLAN_VERSION,
+            actions: vec![ContentChangeAction {
+                content_id: "entry".to_string(),
+                operation: ContentChangeOperation::Update,
+                provider: ContentProvider::Modrinth,
+                project_id: Some("project".to_string()),
+                expected_release_id: Some("old".to_string()),
+                target_release_id: "new".to_string(),
+                relative_path: Some("mods/example.jar".to_string()),
+                current_provider_file_name: Some("example.jar".to_string()),
+                target_provider_file_name: Some("example-new.jar".to_string()),
+                final_relative_path: Some("mods/example-new.jar".to_string()),
+                files: Vec::new(),
+                dependencies: Vec::new(),
+                modrinth_plan: None,
+                status: ContentChangeActionStatus::Completed,
+                error: None,
+                completed: true,
+            }],
+        });
+        assert_eq!(
+            state.content_change().unwrap().content_ids,
+            vec!["entry".to_string()]
+        );
+        let restored: InstallJobState =
+            serde_json::from_value(serde_json::to_value(&state).unwrap())
+                .unwrap();
+        assert!(matches!(
+            restored.continuation,
+            Some(InstallContinuationState::ChangeContent {
+                version: CONTENT_CHANGE_PLAN_VERSION,
+                actions,
+            }) if actions[0].is_complete()
+        ));
+    }
+
+    #[test]
+    fn legacy_content_change_continuation_keeps_its_frozen_target() {
+        let continuation: InstallContinuationState =
+            serde_json::from_value(serde_json::json!({
+                "type": "change_content",
+                "actions": [{
+                    "content_id": "entry",
+                    "provider": "modrinth",
+                    "project_id": "project",
+                    "expected_release_id": "old",
+                    "target_release_id": "frozen-target",
+                    "relative_path": "mods/example.jar",
+                    "completed": true
+                }]
+            }))
+            .unwrap();
+
+        let InstallContinuationState::ChangeContent { version, actions } =
+            continuation
+        else {
+            panic!("wrong continuation variant");
+        };
+        assert_eq!(version, 0);
+        assert_eq!(actions[0].target_release_id, "frozen-target");
+        assert_eq!(
+            actions[0].effective_status(),
+            ContentChangeActionStatus::Completed
         );
     }
 
@@ -1455,9 +1828,45 @@ pub enum InstallRequest {
         #[serde(default)]
         display_icon: Option<String>,
     },
+    InstallContentBatch {
+        instance_id: String,
+        items: Vec<InstallContentBatchItem>,
+        display_title: String,
+        #[serde(default)]
+        display_icon: Option<String>,
+    },
+    ChangeContent {
+        instance_id: String,
+        intent: ContentChangeIntent,
+        display_title: String,
+        #[serde(default)]
+        display_icon: Option<String>,
+    },
     DownloadJava {
         vendor: String,
         version: u32,
+    },
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum InstallContentBatchItem {
+    Modrinth {
+        project_id: String,
+        version_id: Option<String>,
+        content_type: ContentType,
+        #[serde(default)]
+        selected: ResolutionPreferences,
+        #[serde(default)]
+        excluded_project_ids: Vec<String>,
+        #[serde(default)]
+        force_project_ids: Vec<String>,
+    },
+    CurseForge {
+        request: CurseForgeInstallRequest,
+    },
+    CurseForgeWorld {
+        request: CurseForgeWorldInstallRequest,
     },
 }
 
@@ -1487,6 +1896,8 @@ impl InstallRequest {
             Self::InstallContent { .. }
             | Self::InstallCurseForgeContent { .. }
             | Self::InstallCurseForgeWorld { .. }
+            | Self::InstallContentBatch { .. }
+            | Self::ChangeContent { .. }
             | Self::DownloadJava { .. } => false,
         }
     }
@@ -1518,6 +1929,8 @@ impl InstallRequest {
             Self::InstallCurseForgeWorld { .. } => {
                 InstallJobKind::InstallContent
             }
+            Self::InstallContentBatch { .. } => InstallJobKind::InstallContent,
+            Self::ChangeContent { .. } => InstallJobKind::ChangeContent,
             Self::DownloadJava { .. } => InstallJobKind::DownloadJava,
         }
     }
@@ -1554,6 +1967,16 @@ impl InstallRequest {
                     instance_id: request.instance_id.clone(),
                 }
             }
+            Self::InstallContentBatch { instance_id, .. } => {
+                InstallTarget::ExistingInstance {
+                    instance_id: instance_id.clone(),
+                }
+            }
+            Self::ChangeContent { instance_id, .. } => {
+                InstallTarget::ExistingInstance {
+                    instance_id: instance_id.clone(),
+                }
+            }
             _ => InstallTarget::NewInstance { instance_id: None },
         }
     }
@@ -1584,6 +2007,8 @@ impl InstallRequest {
             Self::InstallContent { .. } => InstallCleanup::None,
             Self::InstallCurseForgeContent { .. } => InstallCleanup::None,
             Self::InstallCurseForgeWorld { .. } => InstallCleanup::None,
+            Self::InstallContentBatch { .. } => InstallCleanup::None,
+            Self::ChangeContent { .. } => InstallCleanup::None,
             _ => InstallCleanup::DeleteNewInstance { instance_id: None },
         }
     }
@@ -1600,6 +2025,7 @@ pub enum InstallJobKind {
     UpgradeUnmanagedInstance,
     InstallPackToExistingInstance,
     InstallContent,
+    ChangeContent,
     DownloadJava,
 }
 
@@ -1631,9 +2057,15 @@ impl InstallJobProvider {
 #[serde(rename_all = "snake_case")]
 pub enum DownloadItemStatus {
     Queued,
+    WorkerStarted,
+    WaitingForResource,
+    Connecting,
     Downloading,
     Verifying,
     Writing,
+    Metadata,
+    WaitingForDatabase,
+    Finalizing,
     WaitingForUser,
     Completed,
     Skipped,
@@ -1708,6 +2140,7 @@ impl InstallJobKind {
                 "install_pack_to_existing_instance"
             }
             Self::InstallContent => "install_content",
+            Self::ChangeContent => "change_content",
             Self::DownloadJava => "download_java",
         }
     }
@@ -1723,6 +2156,7 @@ impl InstallJobKind {
                 Self::InstallPackToExistingInstance
             }
             "install_content" => Self::InstallContent,
+            "change_content" => Self::ChangeContent,
             "download_java" => Self::DownloadJava,
             _ => Self::CreateInstance,
         }
@@ -2255,6 +2689,7 @@ pub struct InstallJobSnapshot {
     pub rollback_error: Option<InstallErrorView>,
     pub pause_reason: Option<InstallPauseReason>,
     pub upgrade_result: Option<InstanceUpgradeResult>,
+    pub content_change: Option<ContentChangeSnapshot>,
     pub created: DateTime<Utc>,
     pub modified: DateTime<Utc>,
     pub finished: Option<DateTime<Utc>>,
@@ -2263,6 +2698,58 @@ pub struct InstallJobSnapshot {
 }
 
 impl InstallJobState {
+    pub fn content_change(&self) -> Option<ContentChangeSnapshot> {
+        let InstallRequest::ChangeContent { intent, .. } = &self.request else {
+            return None;
+        };
+        let (content_ids, plan_version, actions) = match &self.continuation {
+            Some(InstallContinuationState::ChangeContent {
+                version,
+                actions,
+            }) => (
+                actions
+                    .iter()
+                    .map(|action| action.content_id.clone())
+                    .collect(),
+                Some(*version),
+                actions
+                    .iter()
+                    .map(|action| ContentChangeActionSnapshot {
+                        content_id: action.content_id.clone(),
+                        operation: action.operation,
+                        target_release_id: action.target_release_id.clone(),
+                        final_relative_path: action.final_relative_path.clone(),
+                        status: action.effective_status(),
+                        error: action.error.clone(),
+                    })
+                    .collect(),
+            ),
+            _ => match intent {
+                ContentChangeIntent::UpdateOne { content_id, .. }
+                | ContentChangeIntent::SwitchVersion { content_id, .. } => {
+                    (vec![content_id.clone()], None, Vec::new())
+                }
+                ContentChangeIntent::UpdateSelected { targets } => (
+                    targets
+                        .iter()
+                        .map(|target| target.content_id.clone())
+                        .collect(),
+                    None,
+                    Vec::new(),
+                ),
+                ContentChangeIntent::UpdateAllUserAdded => {
+                    (Vec::new(), None, Vec::new())
+                }
+            },
+        };
+        Some(ContentChangeSnapshot {
+            intent: intent.clone(),
+            content_ids,
+            plan_version,
+            actions,
+        })
+    }
+
     pub fn source_instance_id(&self) -> Option<String> {
         match &self.request {
             InstallRequest::UpgradeUnmanagedInstance {
@@ -2347,6 +2834,26 @@ impl InstallJobState {
             }
             InstallRequest::InstallContent { .. } => {
                 InstallJobProvider::Modrinth
+            }
+            InstallRequest::ChangeContent { .. } => {
+                InstallJobProvider::Application
+            }
+            InstallRequest::InstallContentBatch { items, .. } => {
+                if items.iter().all(|item| {
+                    matches!(item, InstallContentBatchItem::Modrinth { .. })
+                }) {
+                    InstallJobProvider::Modrinth
+                } else if items.iter().all(|item| {
+                    matches!(
+                        item,
+                        InstallContentBatchItem::CurseForge { .. }
+                            | InstallContentBatchItem::CurseForgeWorld { .. }
+                    )
+                }) {
+                    InstallJobProvider::CurseForge
+                } else {
+                    InstallJobProvider::Application
+                }
             }
             InstallRequest::InstallCurseForgeContent { .. }
             | InstallRequest::InstallCurseForgeWorld { .. }
@@ -2534,7 +3041,10 @@ impl InstallJobState {
                         .get(path)
                         .and_then(|&index| items.get_mut(index))
                     {
-                        item.status = DownloadItemStatus::Completed;
+                        // Network transfer completion is not content
+                        // finalization. `ContentFileCompleted` is the event
+                        // that confirms verification and DB registration.
+                        item.status = DownloadItemStatus::Verifying;
                         item.bytes_downloaded = *bytes;
                         item.bytes_total = item.bytes_total.or(Some(*bytes));
                     }
@@ -2653,9 +3163,15 @@ impl InstallJobState {
                         if matches!(
                             item.status,
                             DownloadItemStatus::Queued
+                                | DownloadItemStatus::WorkerStarted
+                                | DownloadItemStatus::WaitingForResource
+                                | DownloadItemStatus::Connecting
                                 | DownloadItemStatus::Downloading
                                 | DownloadItemStatus::Verifying
                                 | DownloadItemStatus::Writing
+                                | DownloadItemStatus::Metadata
+                                | DownloadItemStatus::WaitingForDatabase
+                                | DownloadItemStatus::Finalizing
                         ) {
                             item.status = DownloadItemStatus::Canceled;
                         }
@@ -2846,14 +3362,16 @@ impl InstallJobState {
                 ..
             }
         );
+        let now = Utc::now();
         let active_speed = self
             .active_downloads
             .values()
             .filter(|download| {
-                Utc::now()
-                    .signed_duration_since(download.last_progress_at)
-                    .num_milliseconds()
-                    < 3_000
+                download.status == DownloadItemStatus::Downloading
+                    && now
+                        .signed_duration_since(download.last_progress_at)
+                        .num_milliseconds()
+                        < 3_000
             })
             .filter_map(|download| download.speed_bytes_per_second)
             .fold(0_u64, u64::saturating_add);

@@ -1,6 +1,6 @@
 use std::fmt::Write as _;
-use std::io::{BufRead, SeekFrom};
-use std::path::Path;
+use std::io::{BufRead, Read, SeekFrom};
+use std::path::{Path, PathBuf};
 use std::time::SystemTime;
 
 use futures::TryFutureExt;
@@ -13,6 +13,7 @@ use tokio::{
 use crate::{
     State,
     prelude::Credentials,
+    state::instances::adapters::sqlite::instance_rows,
     util::io::{self, IOError},
 };
 
@@ -24,6 +25,15 @@ pub use crash_analysis::{
     explain_crash_with_ai, get_crash_analysis_ai_settings,
     save_successful_mod_snapshot, undo_added_mod,
     update_crash_analysis_ai_settings,
+};
+
+mod logshare;
+pub use logshare::{
+    LogShareDeleteResponse, LogShareSettings, LogShareUploadResponse,
+    SharedLog, ai_analyze_direct, ai_analyze_stored, analyse_crash_direct,
+    delete_log, delete_shared_log, get_insights, get_log_share_settings,
+    list_shared_logs, record_shared_log, update_log_share_settings,
+    upload_crash,
 };
 
 #[derive(Serialize, Debug)]
@@ -38,9 +48,68 @@ pub struct Logs {
 pub enum LogType {
     InfoLog,
     CrashReport,
+    JvmCrash,
+    LauncherLog,
+}
+
+fn isolated_minecraft_root(instance_root: &Path) -> Option<PathBuf> {
+    let versions_dir = instance_root.parent()?;
+    if versions_dir
+        .file_name()
+        .is_some_and(|name| name.eq_ignore_ascii_case("versions"))
+    {
+        versions_dir.parent().map(Path::to_path_buf)
+    } else {
+        None
+    }
+}
+
+fn log_directories_for_type(
+    state: &State,
+    game_dir: &Path,
+    log_type: LogType,
+) -> Vec<PathBuf> {
+    match log_type {
+        LogType::InfoLog => vec![state.directories.game_logs_dir(game_dir)],
+        LogType::CrashReport => {
+            vec![state.directories.game_crash_reports_dir(game_dir)]
+        }
+        LogType::JvmCrash => {
+            let mut directories = vec![game_dir.to_path_buf()];
+            if let Some(root) = isolated_minecraft_root(game_dir) {
+                directories.push(root);
+            }
+            directories
+        }
+        LogType::LauncherLog => {
+            let mut directories = vec![game_dir.to_path_buf()];
+            if let Some(root) = isolated_minecraft_root(game_dir) {
+                directories.push(root);
+            }
+            directories
+        }
+    }
+}
+
+fn is_log_file_for_type(log_type: LogType, file_name: &str) -> bool {
+    match log_type {
+        LogType::JvmCrash => {
+            let lower = file_name.to_ascii_lowercase();
+            lower.starts_with("hs_err") && lower.ends_with(".log")
+        }
+        LogType::LauncherLog => matches!(
+            file_name.to_ascii_lowercase().as_str(),
+            "launcher_log.txt" | "latest_stdout.log"
+        ),
+        _ => true,
+    }
 }
 
 const LOG_COMPACTION_THRESHOLD: usize = 20;
+const MAX_LOG_DISPLAY_BYTES: usize = 2 * 1024 * 1024;
+const MAX_LOG_DISPLAY_LINE_BYTES: usize = 64 * 1024;
+const LOG_DISPLAY_TRUNCATION_MARKER: &str =
+    "\n… [log display truncated by Axolotl] …\n";
 
 #[derive(Serialize, Debug)]
 pub struct LatestLogCursor {
@@ -100,34 +169,58 @@ struct LogCompactionStats {
 struct CompactedLog {
     output: String,
     stats: LogCompactionStats,
+    display_truncated: bool,
 }
 
 async fn resolve_instance_path(
     instance: &str,
     state: &State,
 ) -> crate::Result<(String, Option<String>)> {
-    let row = sqlx::query!(
-        "
-        SELECT path, game_dir_override
-        FROM instances
-        WHERE id = ? OR path = ?
-        ORDER BY CASE WHEN id = ? THEN 0 ELSE 1 END
-        LIMIT 1
-        ",
-        instance,
-        instance,
-        instance,
-    )
-    .fetch_optional(&state.pool)
-    .await?
-    .ok_or_else(|| {
-        crate::ErrorKind::InputError(format!(
-            "Unknown instance id or path: {instance}"
-        ))
-        .as_error()
-    })?;
+    let instance =
+        match instance_rows::get_instance_by_id(instance, &state.pool).await? {
+            Some(instance) => instance,
+            None => {
+                // Preserve the historical id-or-path lookup, with id winning.
+                match instance_rows::get_instance_by_path(instance, &state.pool)
+                    .await?
+                {
+                    Some(instance) => instance,
+                    None => {
+                        return Err(crate::ErrorKind::InputError(format!(
+                            "Unknown instance id or path: {instance}"
+                        ))
+                        .as_error());
+                    }
+                }
+            }
+        };
 
-    Ok((row.path, row.game_dir_override))
+    // Directly associated instances have no profile folder of their own:
+    // their logs and crash reports live inside the externally managed
+    // installation, at the real game directory the launch runs from. That
+    // path is absolute, so `resolve_game_dir` returns it unchanged and
+    // `instance_logs_dir` / `crash_reports_dir` naturally land on
+    // `<game>/logs` / `<game>/crash-reports`.
+    if instance.is_direct_linked() {
+        if let Some(game_dir) = crate::launcher::linked_game_dir(&instance) {
+            return Ok((game_dir.to_string_lossy().into_owned(), None));
+        }
+        tracing::warn!(
+            instance_id = %instance.id,
+            "Directly linked instance metadata is incomplete; falling back \
+             to the recorded linked `.minecraft` root for log resolution"
+        );
+        if let Some(linked) = instance
+            .linked_dot_minecraft
+            .as_deref()
+            .map(str::trim)
+            .filter(|linked| !linked.is_empty())
+        {
+            return Ok((linked.to_string(), None));
+        }
+    }
+
+    Ok((instance.path, instance.game_dir_override))
 }
 
 fn split_line_ending(line: &str) -> (&str, &str) {
@@ -219,13 +312,105 @@ fn read_compacted_log<R: BufRead>(
         );
     }
 
-    Ok(CompactedLog { output, stats })
+    Ok(CompactedLog {
+        output,
+        stats,
+        display_truncated: false,
+    })
 }
 
 fn compact_duplicate_lines(input: &str) -> CompactedLog {
     let mut reader = std::io::Cursor::new(input.as_bytes());
     read_compacted_log(&mut reader)
         .expect("compacting an in-memory log should not fail")
+}
+
+#[cfg(test)]
+fn compact_log_for_display(input: &str) -> CompactedLog {
+    cap_log_for_display(compact_duplicate_lines(input), false)
+}
+
+fn truncate_display_text(value: &str, max_bytes: usize) -> String {
+    if value.len() <= max_bytes {
+        return value.to_string();
+    }
+
+    let retained_bytes =
+        max_bytes.saturating_sub(LOG_DISPLAY_TRUNCATION_MARKER.len());
+    let prefix_end = char_boundary_before(value, retained_bytes / 2);
+    let suffix_start = char_boundary_after(
+        value,
+        value.len().saturating_sub(retained_bytes - prefix_end),
+    );
+    format!(
+        "{}{}{}",
+        &value[..prefix_end],
+        LOG_DISPLAY_TRUNCATION_MARKER,
+        &value[suffix_start..]
+    )
+}
+
+fn char_boundary_before(value: &str, mut index: usize) -> usize {
+    index = index.min(value.len());
+    while index > 0 && !value.is_char_boundary(index) {
+        index -= 1;
+    }
+    index
+}
+
+fn char_boundary_after(value: &str, mut index: usize) -> usize {
+    index = index.min(value.len());
+    while index < value.len() && !value.is_char_boundary(index) {
+        index += 1;
+    }
+    index
+}
+
+fn cap_log_for_display(
+    mut compacted: CompactedLog,
+    source_truncated: bool,
+) -> CompactedLog {
+    let mut output = String::with_capacity(
+        compacted.output.len().min(MAX_LOG_DISPLAY_BYTES),
+    );
+    let mut truncated = source_truncated;
+
+    for original_line in compacted.output.split_inclusive('\n') {
+        let line =
+            truncate_display_text(original_line, MAX_LOG_DISPLAY_LINE_BYTES);
+        truncated |= line.len() != original_line.len();
+        if output.len().saturating_add(line.len())
+            > MAX_LOG_DISPLAY_BYTES
+                .saturating_sub(LOG_DISPLAY_TRUNCATION_MARKER.len())
+        {
+            truncated = true;
+            break;
+        }
+        output.push_str(&line);
+    }
+
+    if truncated {
+        output.push_str(LOG_DISPLAY_TRUNCATION_MARKER);
+    }
+    compacted.output = output;
+    compacted.display_truncated = truncated;
+    compacted
+}
+
+fn read_limited_compacted_log<R: Read>(
+    reader: &mut R,
+) -> std::io::Result<CompactedLog> {
+    let mut bytes = Vec::with_capacity(MAX_LOG_DISPLAY_BYTES);
+    reader
+        .take((MAX_LOG_DISPLAY_BYTES + 1) as u64)
+        .read_to_end(&mut bytes)?;
+    let source_truncated = bytes.len() > MAX_LOG_DISPLAY_BYTES;
+    bytes.truncate(MAX_LOG_DISPLAY_BYTES);
+    let input = String::from_utf8_lossy(&bytes);
+    Ok(cap_log_for_display(
+        compact_duplicate_lines(&input),
+        source_truncated,
+    ))
 }
 
 fn format_count(count: usize) -> String {
@@ -252,6 +437,20 @@ async fn maybe_emit_log_compaction_warning(
         "Axolotl Launcher has compacted {} repeated log lines in {} before displaying it for performance reasons.",
         format_count(stats.compacted_lines),
         file_name,
+    ))
+    .await;
+}
+
+async fn maybe_emit_log_display_truncation_warning(
+    file_name: &str,
+    truncated: bool,
+) {
+    if !truncated {
+        return;
+    }
+
+    let _ = crate::event::emit::emit_warning(&format!(
+        "Axolotl Launcher truncated {file_name} before displaying it to keep the console responsive. The original log file remains unchanged.",
     ))
     .await;
 }
@@ -300,14 +499,11 @@ pub async fn get_logs_from_type(
         .directories
         .resolve_game_dir(&instance_path, game_dir_override.as_deref());
 
-    let logs_folder = match log_type {
-        LogType::InfoLog => state.directories.game_logs_dir(&game_dir),
-        LogType::CrashReport => {
-            state.directories.game_crash_reports_dir(&game_dir)
+    let mut seen_files = std::collections::HashSet::new();
+    for logs_folder in log_directories_for_type(&state, &game_dir, log_type) {
+        if !logs_folder.exists() {
+            continue;
         }
-    };
-
-    if logs_folder.exists() {
         for entry in std::fs::read_dir(&logs_folder)
             .map_err(|e| IOError::with_path(e, &logs_folder))?
         {
@@ -323,6 +519,12 @@ pub async fn get_logs_from_type(
             }
             if let Some(file_name) = path.file_name() {
                 let file_name = file_name.to_string_lossy().to_string();
+                if !is_log_file_for_type(log_type, &file_name) {
+                    continue;
+                }
+                if !seen_files.insert(file_name.clone()) {
+                    continue;
+                }
                 logs.push(
                     Logs::build(
                         log_type,
@@ -359,6 +561,20 @@ pub async fn get_logs(
         &mut logs,
     )
     .await?;
+    get_logs_from_type(
+        instance_id,
+        LogType::JvmCrash,
+        clear_contents,
+        &mut logs,
+    )
+    .await?;
+    get_logs_from_type(
+        instance_id,
+        LogType::LauncherLog,
+        clear_contents,
+        &mut logs,
+    )
+    .await?;
 
     let mut logs = logs.into_iter().collect::<crate::Result<Vec<Logs>>>()?;
     logs.sort_by(|a, b| b.age.cmp(&a.age).then(b.filename.cmp(&a.filename)));
@@ -378,13 +594,15 @@ pub async fn get_logs_by_filename(
         .directories
         .resolve_game_dir(&instance_path, game_dir_override.as_deref());
 
-    let path = match log_type {
-        LogType::InfoLog => state.directories.game_logs_dir(&game_dir),
-        LogType::CrashReport => {
-            state.directories.game_crash_reports_dir(&game_dir)
-        }
-    }
-    .join(&filename);
+    let path = log_directories_for_type(&state, &game_dir, log_type)
+        .into_iter()
+        .map(|directory| directory.join(&filename))
+        .find(|path| path.is_file())
+        .ok_or_else(|| {
+            crate::ErrorKind::OtherError(format!(
+                "Log file not found: {filename}"
+            ))
+        })?;
 
     let metadata = std::fs::metadata(&path)?;
     let age = metadata.modified().unwrap_or(SystemTime::UNIX_EPOCH);
@@ -398,19 +616,19 @@ async fn get_output_by_filename_from_path(
     log_type: LogType,
     file_name: &str,
 ) -> crate::Result<CensoredString> {
-    let logs_folder = match log_type {
-        LogType::InfoLog => state.directories.game_logs_dir(game_dir),
-        LogType::CrashReport => {
-            state.directories.game_crash_reports_dir(game_dir)
-        }
-    };
-
-    let path = logs_folder.join(file_name);
+    let path = log_directories_for_type(state, game_dir, log_type)
+        .into_iter()
+        .map(|directory| directory.join(file_name))
+        .find(|path| path.is_file())
+        .ok_or_else(|| {
+            crate::ErrorKind::OtherError(format!(
+                "Log file not found: {file_name}"
+            ))
+        })?;
 
     let credentials = Credentials::get_all(&state.pool)
         .await?
         .into_iter()
-        .map(|x| x.1)
         .collect::<Vec<_>>();
 
     if let Some(ext) = path.extension() {
@@ -420,17 +638,27 @@ async fn get_output_by_filename_from_path(
             let gz =
                 flate2::read::GzDecoder::new(std::io::BufReader::new(file));
             let mut reader = std::io::BufReader::new(gz);
-            let compacted = read_compacted_log(&mut reader)
+            let compacted = read_limited_compacted_log(&mut reader)
                 .map_err(|e| IOError::with_path(e, &path))?;
             maybe_emit_log_compaction_warning(file_name, compacted.stats).await;
+            maybe_emit_log_display_truncation_warning(
+                file_name,
+                compacted.display_truncated,
+            )
+            .await;
             return Ok(CensoredString::censor(compacted.output, &credentials));
         } else if ext == "log" || ext == "txt" {
             let file = std::fs::File::open(&path)
                 .map_err(|e| IOError::with_path(e, &path))?;
             let mut reader = std::io::BufReader::new(file);
-            let compacted = read_compacted_log(&mut reader)
+            let compacted = read_limited_compacted_log(&mut reader)
                 .map_err(|e| IOError::with_path(e, &path))?;
             maybe_emit_log_compaction_warning(file_name, compacted.stats).await;
+            maybe_emit_log_display_truncation_warning(
+                file_name,
+                compacted.display_truncated,
+            )
+            .await;
             return Ok(CensoredString::censor(compacted.output, &credentials));
         }
     }
@@ -492,14 +720,15 @@ pub async fn delete_logs_by_filename(
         .directories
         .resolve_game_dir(&instance_path, game_dir_override.as_deref());
 
-    let logs_folder = match log_type {
-        LogType::InfoLog => state.directories.game_logs_dir(&game_dir),
-        LogType::CrashReport => {
-            state.directories.game_crash_reports_dir(&game_dir)
-        }
-    };
-
-    let path = logs_folder.join(filename);
+    let path = log_directories_for_type(&state, &game_dir, log_type)
+        .into_iter()
+        .map(|directory| directory.join(filename))
+        .find(|path| path.is_file())
+        .ok_or_else(|| {
+            crate::ErrorKind::OtherError(format!(
+                "Log file not found: {filename}"
+            ))
+        })?;
     io::remove_file(&path).await?;
     Ok(())
 }
@@ -511,14 +740,19 @@ pub async fn get_live_log_buffer(
     let state = State::get().await?;
     let lines = crate::state::get_log_buffer(instance_id);
     let joined = lines.join("\n");
-    let compacted = compact_duplicate_lines(&joined);
+    let compacted =
+        cap_log_for_display(compact_duplicate_lines(&joined), false);
 
     let credentials = Credentials::get_all(&state.pool)
         .await?
         .into_iter()
-        .map(|x| x.1)
         .collect::<Vec<_>>();
     maybe_emit_log_compaction_warning("live log", compacted.stats).await;
+    maybe_emit_log_display_truncation_warning(
+        "live log",
+        compacted.display_truncated,
+    )
+    .await;
     Ok(CensoredString::censor(compacted.output, &credentials))
 }
 
@@ -573,28 +807,378 @@ pub async fn get_generic_live_log_cursor(
         new_file = true;
     }
 
-    let mut buffer = Vec::new();
-    file.seek(SeekFrom::Start(cursor))
+    let requested_start = cursor;
+    let unread_bytes = metadata.len().saturating_sub(cursor);
+    let display_start = if unread_bytes > MAX_LOG_DISPLAY_BYTES as u64 {
+        metadata.len().saturating_sub(MAX_LOG_DISPLAY_BYTES as u64)
+    } else {
+        cursor
+    };
+    let source_truncated = display_start != requested_start;
+    let mut buffer = Vec::with_capacity(MAX_LOG_DISPLAY_BYTES);
+    file.seek(SeekFrom::Start(display_start))
         .map_err(|e| IOError::with_path(e, &path))
         .await?; // Seek to cursor
-    let bytes_read = file
+    file.take(MAX_LOG_DISPLAY_BYTES as u64)
         .read_to_end(&mut buffer)
         .map_err(|e| IOError::with_path(e, &path))
         .await?; // Read to end of file
     let output = String::from_utf8_lossy(&buffer); // Convert to String
-    let compacted = compact_duplicate_lines(&output);
-    let cursor = cursor + bytes_read as u64; // Update cursor
+    let compacted =
+        cap_log_for_display(compact_duplicate_lines(&output), source_truncated);
+    let cursor = metadata.len(); // Consume skipped output as well as the display window.
 
     let credentials = Credentials::get_all(&state.pool)
         .await?
         .into_iter()
-        .map(|x| x.1)
         .collect::<Vec<_>>();
     maybe_emit_log_compaction_warning(log_file_name, compacted.stats).await;
+    maybe_emit_log_display_truncation_warning(
+        log_file_name,
+        compacted.display_truncated,
+    )
+    .await;
     let output = CensoredString::censor(compacted.output, &credentials);
     Ok(LatestLogCursor {
         cursor,
         new_file,
         output,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::state::CreateDirectLinkInstance;
+    use std::sync::Arc;
+    use tempfile::TempDir;
+
+    /// The launcher state is a process-wide singleton; initialize it once and
+    /// reuse it so `State::get()` resolves inside these APIs. The state root
+    /// is intentionally leaked (`.keep()`) because the shared state outlives
+    /// this function.
+    async fn global_state() -> Arc<State> {
+        if !State::initialized() {
+            let root = TempDir::new().unwrap().keep();
+            let _ =
+                State::init_for_test(root.to_string_lossy().to_string()).await;
+        }
+        State::get().await.unwrap()
+    }
+
+    /// Creates a directly associated instance whose linked `.minecraft`
+    /// lives in a fresh temp dir (generic dialect: launches from the linked
+    /// `.minecraft/versions/<id>` directory).
+    async fn create_direct_link_fixture(
+        label: &str,
+    ) -> (TempDir, crate::state::InstanceMetadata) {
+        let state = global_state().await;
+        let minecraft = TempDir::new().unwrap();
+        let version_dir = minecraft.path().join("versions").join(label);
+        std::fs::create_dir_all(&version_dir).unwrap();
+        std::fs::write(
+            version_dir.join(format!("{label}.json")),
+            serde_json::to_vec_pretty(&serde_json::json!({
+                "id": label,
+                "inheritsFrom": "1.20.1",
+                "mainClass": "net.minecraft.client.main.Main"
+            }))
+            .unwrap(),
+        )
+        .unwrap();
+
+        let instance = crate::state::create_direct_link_instance(
+            CreateDirectLinkInstance {
+                name: None,
+                launcher_type:
+                    crate::api::pack::import::ImportLauncherType::Generic,
+                base_path: minecraft.path().to_path_buf(),
+                instance_folder: format!("versions/{label}"),
+                instance_path: None,
+                game_dir_mode: None,
+            },
+            &state,
+        )
+        .await
+        .unwrap();
+        let metadata = crate::state::get_instance(&instance.id, &state.pool)
+            .await
+            .unwrap()
+            .expect("metadata for created fixture");
+        (minecraft, metadata)
+    }
+
+    #[tokio::test]
+    async fn direct_link_instance_resolves_to_linked_game_dir() {
+        let state = global_state().await;
+        let (minecraft, metadata) =
+            create_direct_link_fixture("logs-resolve").await;
+
+        let (resolved, game_dir_override) =
+            resolve_instance_path(&metadata.instance.id, &state)
+                .await
+                .unwrap();
+
+        // The generic dialect resolves to the isolated version directory; the
+        // absolute path keeps helpers inside the linked installation instead
+        // of a ghost `profiles/<path>` folder.
+        assert_eq!(
+            resolved,
+            minecraft
+                .path()
+                .join("versions")
+                .join("logs-resolve")
+                .to_string_lossy()
+        );
+        assert!(game_dir_override.is_none());
+        assert_eq!(
+            state.directories.instance_logs_dir(&resolved),
+            minecraft
+                .path()
+                .join("versions")
+                .join("logs-resolve")
+                .join("logs")
+        );
+        assert_eq!(
+            state.directories.crash_reports_dir(&resolved),
+            minecraft
+                .path()
+                .join("versions")
+                .join("logs-resolve")
+                .join("crash-reports")
+        );
+        assert!(
+            !state
+                .directories
+                .instances_dir()
+                .join(&metadata.instance.path)
+                .exists(),
+            "no profile directory may be created for a direct-link instance"
+        );
+    }
+
+    #[test]
+    fn display_compaction_bounds_oversized_nbt_line() {
+        let log = format!("NBT: {}", "你".repeat(100_000));
+
+        let compacted = compact_log_for_display(&log);
+
+        assert!(compacted.display_truncated);
+        assert!(compacted.output.len() <= MAX_LOG_DISPLAY_BYTES);
+        assert!(compacted.output.contains("truncated by Axolotl"));
+        assert!(compacted.output.is_char_boundary(compacted.output.len()));
+    }
+
+    #[test]
+    fn display_compaction_bounds_many_distinct_lines() {
+        let log = (0..100_000)
+            .map(|index| format!("line-{index}\n"))
+            .collect::<String>();
+
+        let compacted = compact_log_for_display(&log);
+
+        assert!(compacted.display_truncated);
+        assert!(compacted.output.len() <= MAX_LOG_DISPLAY_BYTES);
+    }
+
+    #[tokio::test]
+    async fn ordinary_instance_still_resolves_to_relative_path() {
+        let state = global_state().await;
+        let metadata = crate::api::instance::create(
+            format!("logs-normal {}", uuid::Uuid::new_v4()),
+            "1.20.1".to_string(),
+            crate::state::ModLoader::Vanilla,
+            None,
+            None,
+            crate::state::InstanceLink::Unmanaged,
+            None,
+            None,
+        )
+        .await
+        .unwrap();
+
+        let (resolved, game_dir_override) =
+            resolve_instance_path(&metadata.instance.id, &state)
+                .await
+                .unwrap();
+        assert_eq!(
+            resolved, metadata.instance.path,
+            "ordinary instances keep resolving through their relative profile path"
+        );
+        assert!(game_dir_override.is_none());
+    }
+
+    #[tokio::test]
+    async fn direct_link_instance_logs_are_enumerated_from_linked_root() {
+        let state = global_state().await;
+        let (minecraft, metadata) =
+            create_direct_link_fixture("logs-enum").await;
+
+        let version_dir = minecraft.path().join("versions").join("logs-enum");
+        std::fs::create_dir_all(version_dir.join("logs")).unwrap();
+        std::fs::write(
+            version_dir.join("logs").join("latest.log"),
+            b"[12:00:00] [Render thread/INFO]: Setting user\n",
+        )
+        .unwrap();
+        std::fs::create_dir_all(version_dir.join("crash-reports")).unwrap();
+        std::fs::write(
+            version_dir
+                .join("crash-reports")
+                .join("crash-2026-01-02_03.04.05-server.txt"),
+            b"---- Minecraft Crash Report ----\n",
+        )
+        .unwrap();
+
+        let logs = get_logs(&metadata.instance.id, None).await.unwrap();
+        let filenames = logs
+            .iter()
+            .map(|log| log.filename.as_str())
+            .collect::<Vec<_>>();
+        assert!(
+            filenames.contains(&"latest.log"),
+            "logs must be enumerated from the linked root: {filenames:?}"
+        );
+        assert!(
+            filenames.contains(&"crash-2026-01-02_03.04.05-server.txt"),
+            "crash reports must be enumerated from the linked root: {filenames:?}"
+        );
+        // The log browser must never consult the nonexistent profile folder.
+        assert!(
+            !state
+                .directories
+                .instances_dir()
+                .join(&metadata.instance.path)
+                .exists()
+        );
+    }
+
+    #[tokio::test]
+    async fn root_crash_logs_are_enumerated_and_read_from_linked_roots() {
+        let _state = global_state().await;
+        let (minecraft, metadata) =
+            create_direct_link_fixture("logs-jvm").await;
+        let version_dir = minecraft.path().join("versions").join("logs-jvm");
+        let local_name = "hs_err_pid100.log";
+        let shared_name = "hs_err_pid200.log";
+        std::fs::write(
+            version_dir.join(local_name),
+            b"local JVM crash details\n",
+        )
+        .unwrap();
+        std::fs::write(
+            minecraft.path().join(shared_name),
+            b"shared JVM crash details\n",
+        )
+        .unwrap();
+        std::fs::write(
+            version_dir.join("launcher_log.txt"),
+            b"launcher crash details\n",
+        )
+        .unwrap();
+
+        let logs = get_logs(&metadata.instance.id, Some(true)).await.unwrap();
+        assert!(logs.iter().any(|log| {
+            log.log_type == LogType::JvmCrash && log.filename == local_name
+        }));
+        assert!(logs.iter().any(|log| {
+            log.log_type == LogType::JvmCrash && log.filename == shared_name
+        }));
+        assert!(logs.iter().any(|log| {
+            log.log_type == LogType::LauncherLog
+                && log.filename == "launcher_log.txt"
+        }));
+
+        let output = get_output_by_filename(
+            &metadata.instance.id,
+            LogType::JvmCrash,
+            shared_name,
+        )
+        .await
+        .unwrap();
+        assert!(output.as_str().contains("shared JVM crash details"));
+    }
+
+    #[tokio::test]
+    async fn logshare_collection_uses_relative_paths_without_diagnostics() {
+        let _state = global_state().await;
+        let (minecraft, metadata) =
+            create_direct_link_fixture("logs-upload").await;
+        let version_dir = minecraft.path().join("versions").join("logs-upload");
+        std::fs::create_dir_all(version_dir.join("logs")).unwrap();
+        std::fs::write(
+            version_dir.join("logs").join("latest.log"),
+            b"latest log content\n",
+        )
+        .unwrap();
+        std::fs::create_dir_all(version_dir.join("crash-reports")).unwrap();
+        std::fs::write(
+            version_dir.join("crash-reports").join("crash-upload.txt"),
+            b"crash report content\n",
+        )
+        .unwrap();
+        std::fs::write(
+            version_dir.join("hs_err_pid300.log"),
+            b"JVM crash content\n",
+        )
+        .unwrap();
+
+        let collected =
+            crash_analysis::collect_crash_logs(&metadata.instance.id)
+                .await
+                .unwrap();
+        let names = collected
+            .sources
+            .iter()
+            .map(|source| source.name.as_str())
+            .collect::<Vec<_>>();
+        assert!(names.contains(&"latest.log"), "sources: {names:?}");
+        assert!(
+            names.contains(&"crash-reports/crash-upload.txt"),
+            "sources: {names:?}"
+        );
+        assert!(names.contains(&"hs_err_pid300.log"), "sources: {names:?}");
+        assert!(
+            collected
+                .combined_log
+                .as_str()
+                .contains("latest log content")
+        );
+    }
+
+    #[tokio::test]
+    async fn direct_link_crash_analysis_finds_linked_crash_reports() {
+        let _state = global_state().await;
+        let (minecraft, metadata) =
+            create_direct_link_fixture("logs-crash").await;
+
+        let version_dir = minecraft.path().join("versions").join("logs-crash");
+        std::fs::create_dir_all(version_dir.join("logs")).unwrap();
+        std::fs::write(
+            version_dir.join("logs").join("latest.log"),
+            b"[12:00:00] [Render thread/INFO]: Setting user\n",
+        )
+        .unwrap();
+        std::fs::create_dir_all(version_dir.join("crash-reports")).unwrap();
+        std::fs::write(
+            version_dir
+                .join("crash-reports")
+                .join("crash-2026-01-02_03.04.05-server.txt"),
+            b"---- Minecraft Crash Report ----\n\
+              // Who set us up the TNT?\n\
+              java.lang.OutOfMemoryError: Java heap space\n",
+        )
+        .unwrap();
+
+        let analysis = crate::api::logs::analyze_crash(&metadata.instance.id)
+            .await
+            .unwrap();
+        assert!(
+            analysis
+                .sources
+                .iter()
+                .any(|source| source.source_type == "crash_report"),
+            "crash analysis must discover reports under the linked root"
+        );
+    }
 }

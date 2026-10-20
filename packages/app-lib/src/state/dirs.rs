@@ -24,6 +24,9 @@ pub struct DirectoryInfo {
 }
 
 impl DirectoryInfo {
+    pub(crate) fn synced_options_dir(&self) -> std::path::PathBuf {
+        self.config_dir.join("synced-options")
+    }
     pub fn global_handle_if_ready() -> Option<&'static Self> {
         LAUNCHER_STATE.get().map(|x| &x.directories)
     }
@@ -35,8 +38,13 @@ impl DirectoryInfo {
     // Get the settings directory
     // init() is not needed for this function
     pub fn initial_settings_dir_path(app_identifier: &str) -> Option<PathBuf> {
-        Self::env_path("THESEUS_CONFIG_DIR")
-            .or_else(|| Some(dirs::data_dir()?.join(app_identifier)))
+        Self::env_path("THESEUS_CONFIG_DIR").or_else(|| {
+            Some(
+                dirs::data_dir()?.join(crate::brand::app_data_dir_identifier(
+                    app_identifier,
+                )),
+            )
+        })
     }
 
     /// Get all paths needed for Theseus to operate properly
@@ -164,8 +172,8 @@ impl DirectoryInfo {
 
     /// Gets the directory of a managed dedicated server by id
     #[inline]
-    pub fn server_dir(&self, server_id: &str) -> PathBuf {
-        self.servers_dir().join(server_id)
+    pub fn server_dir(&self, server_id: &str) -> crate::Result<PathBuf> {
+        crate::util::io::safe_relative_join(&self.servers_dir(), server_id)
     }
 
     #[inline]
@@ -228,7 +236,8 @@ impl DirectoryInfo {
             // treat it as unset and fall back to the managed folder.
             Some(override_dir)
                 if !override_dir.is_empty()
-                    && Path::new(override_dir).is_absolute() =>
+                    && (Path::new(override_dir).is_absolute()
+                        || Self::is_absolute_override(override_dir)) =>
             {
                 PathBuf::from(override_dir)
             }
@@ -242,10 +251,27 @@ impl DirectoryInfo {
         &self,
         instance: &crate::state::instances::Instance,
     ) -> PathBuf {
-        self.resolve_game_dir(
-            &instance.path,
-            instance.game_dir_override.as_deref(),
-        )
+        // Symlink imports persist the exact external target independently of
+        // the optional game-dir override. Use it as a fallback so content
+        // management keeps operating on the real directory even for older
+        // imports that predate the override field.
+        let game_dir = instance
+            .game_dir_override
+            .as_deref()
+            .or(instance.symlink_target.as_deref());
+        self.resolve_game_dir(&instance.path, game_dir)
+    }
+
+    /// `Path::is_absolute` treats a Windows drive-letter path (e.g.
+    /// `D:\Games\.minecraft`) as relative on non-Windows builds. Overrides are
+    /// persisted and round-trip across OSes, so a drive-letter path must be
+    /// honored as absolute on every platform.
+    fn is_absolute_override(value: &str) -> bool {
+        let bytes = value.as_bytes();
+        bytes.len() >= 3
+            && bytes[0].is_ascii_alphabetic()
+            && bytes[1] == b':'
+            && matches!(bytes[2], b'/' | b'\\')
     }
 
     #[inline]
@@ -266,6 +292,10 @@ impl DirectoryInfo {
         self.config_dir.join(CACHES_FOLDER_NAME)
     }
 
+    pub fn content_store_dir(&self) -> PathBuf {
+        self.caches_dir().join("content-store")
+    }
+
     /// Get path from environment variable
     #[inline]
     fn env_path(name: &str) -> Option<PathBuf> {
@@ -280,7 +310,9 @@ impl DirectoryInfo {
         app_identifier: &str,
     ) -> crate::Result<()>
     where
-        E: sqlx::Executor<'a, Database = sqlx::Sqlite> + Copy,
+        E: sqlx::Executor<'a, Database = sqlx::Sqlite>
+            + sqlx::Acquire<'a, Database = sqlx::Sqlite>
+            + Copy,
     {
         let app_dir = DirectoryInfo::initial_settings_dir_path(app_identifier)
             .ok_or(crate::ErrorKind::FSError(
@@ -343,6 +375,28 @@ impl DirectoryInfo {
 
                 if !is_dir_writable(&move_dir).await? {
                     return Err(crate::ErrorKind::DirectoryMoveError(format!("Cannot move directory to {}: directory is not writable", move_dir.display())).into());
+                }
+
+                if settings.backup_repository_path.is_none() {
+                    let old_repository =
+                        prev_dir.join("Backups").join("instances");
+                    let new_repository =
+                        move_dir.join("Backups").join("instances");
+                    if let Some(path) = crate::api::instance::move_default_repository_for_launcher_directory(
+                        &old_repository,
+                        &new_repository,
+                    )
+                    .await?
+                    {
+                        sqlx::query(
+                            "INSERT INTO pending_backup_repository_cleanups (path, created_at)
+                             VALUES (?, unixepoch('subsec') * 1000)
+                             ON CONFLICT(path) DO UPDATE SET created_at = excluded.created_at",
+                        )
+                        .bind(path.to_string_lossy().to_string())
+                        .execute(exec)
+                        .await?;
+                    }
                 }
 
                 const MOVE_DIRS: &[&str] = &[
@@ -654,6 +708,28 @@ mod resolve_game_dir_tests {
             settings_dir: PathBuf::from(r"C:\launcher\settings"),
             config_dir: PathBuf::from(r"C:\launcher"),
             app_identifier: "test".to_string(),
+        }
+    }
+
+    #[test]
+    fn server_directory_rejects_absolute_and_windows_alias_paths() {
+        let dirs = dirs();
+        assert_eq!(
+            dirs.server_dir("server-1234").unwrap(),
+            dirs.servers_dir().join("server-1234")
+        );
+        for id in [
+            "../outside",
+            "C:outside",
+            "C:/outside",
+            r"\outside",
+            r"\\server\share",
+            ".",
+            "NUL",
+            "server:stream",
+            "server.",
+        ] {
+            assert!(dirs.server_dir(id).is_err(), "{id:?}");
         }
     }
 

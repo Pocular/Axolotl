@@ -1,7 +1,7 @@
 [package]
 name = "theseus"
 # The actual version is set by the theseus-build workflow on tagging
-version = "1.8.1"
+version = "1.9.9"
 edition.workspace = true
 
 [dependencies]
@@ -49,6 +49,7 @@ heck = { workspace = true }
 hickory-resolver = { workspace = true }
 hmac = { workspace = true }
 http = { workspace = true }
+iana-time-zone = { workspace = true }
 indicatif = { workspace = true, optional = true }
 itertools = { workspace = true }
 jsonwebtoken = { workspace = true }
@@ -64,6 +65,7 @@ paste = { workspace = true }
 path-util = { workspace = true }
 phf = { workspace = true }
 png = { workspace = true }
+portable-pty = { workspace = true }
 quartz_nbt = { workspace = true, features = ["serde"] }
 quick-xml = { workspace = true, features = ["async-tokio", "serialize"] }
 rand = { workspace = true }

@@ -6,6 +6,7 @@ use std::{
 use futures::stream::{FuturesUnordered, StreamExt};
 use io::IOError;
 use serde::{Deserialize, Serialize};
+use tempfile::Builder as TempFileBuilder;
 
 use crate::{
     install::{
@@ -29,6 +30,8 @@ use crate::{
 pub mod atlauncher;
 mod axolotl;
 pub mod curseforge;
+pub(crate) mod direct_link;
+pub mod gamedir_resolve;
 pub mod gdlauncher;
 pub(crate) mod generic;
 pub mod hmcl;
@@ -326,17 +329,25 @@ async fn get_axolotl_instances(
 async fn get_generic_instances(
     base_path: &Path,
 ) -> crate::Result<Vec<ImportableInstance>> {
-    let mut instances: Vec<ImportableInstance> =
-        scan_instances_at(base_path, None)
-            .await
-            .into_iter()
-            .map(|(n, p)| ImportableInstance {
-                name: n,
-                path: p.to_string_lossy().to_string(),
-                compatible_mode: false,
-                version_path: None,
-            })
-            .collect();
+    let mut scanned = scan_instances_at(base_path, None).await;
+    // A folder import commonly targets a launcher or pack directory whose
+    // game files live one level below it in `.minecraft`. Treat that nested
+    // root exactly like a directly selected `.minecraft` folder, preserving
+    // the version-directory path so the importer can resolve its metadata.
+    if base_path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .is_none_or(|name| !name.eq_ignore_ascii_case(".minecraft"))
+    {
+        scanned.extend(
+            scan_instances_at(&base_path.join(".minecraft"), None).await,
+        );
+    }
+    let mut collector = InstanceCollector::new();
+    for (name, path) in scanned {
+        collector.push(name, path);
+    }
+    let mut instances = collector.instances;
 
     if instances.is_empty() && base_path.is_dir() {
         let mut dir = io::read_dir(base_path).await?;
@@ -390,10 +401,10 @@ async fn get_unknown_launcher_instances(
     }
 
     // Also check for a .minecraft folder next to the launcher executable.
-    if pe_info::folder_has_product(base_path, "Plain Craft Launcher") {
-        if let Some(entry) = pcl::get_local_dotminecraft(base_path) {
-            collect_launcher_instances(&mut collector, vec![entry]).await;
-        }
+    if pe_info::folder_has_product(base_path, "Plain Craft Launcher")
+        && let Some(entry) = pcl::get_local_dotminecraft(base_path)
+    {
+        collect_launcher_instances(&mut collector, vec![entry]).await;
     }
 
     // HMCL
@@ -556,7 +567,18 @@ async fn scan_instances_at(
         return instances;
     }
 
-    if instance_json::detect(path).is_some() {
+    // A folder that hosts a `versions` directory is a shared game directory
+    // (a container), not an instance: its loose JSON files (launcher configs,
+    // mod-manager metadata) must not shadow the real version folders as the
+    // detected instance. Only fall back to the folder itself when no version
+    // folder could be collected.
+    let versions_dir = path.join("versions");
+    let has_versions_dir = versions_dir.is_dir();
+    if has_versions_dir {
+        collect_child_instances(&mut instances, &versions_dir, prefix, true)
+            .await;
+    }
+    if instances.is_empty() && instance_json::detect(path).is_some() {
         let name = path
             .file_name()
             .map(|n| n.to_string_lossy().to_string())
@@ -569,11 +591,6 @@ async fn scan_instances_at(
             },
             path.to_path_buf(),
         ));
-    }
-    let versions_dir = path.join("versions");
-    if versions_dir.is_dir() {
-        collect_child_instances(&mut instances, &versions_dir, prefix, true)
-            .await;
     }
     tracing::debug!(
         "scan_instances_at: path={} prefix={:?} found={}",
@@ -695,7 +712,6 @@ async fn import_instance_inner(
     job: ImportJob,
     launcher_type: ImportLauncherType,
 ) -> crate::Result<()> {
-    let instance_id = job.instance_id.clone();
     tracing::debug!(
         "Importing instance from {} (symlink={}, launcher_type={launcher_type})",
         job.instance_folder,
@@ -705,21 +721,11 @@ async fn import_instance_inner(
         launcher_type,
         instance_folder: job.instance_folder.clone(),
     };
-    let res = if launcher_type == ImportLauncherType::Unknown {
+    if launcher_type == ImportLauncherType::Unknown {
         import_unknown_launcher(job).await
     } else {
         import_via_launcher(launcher_type, &job, details).await
-    };
-
-    // If import failed, delete the profile
-    match res {
-        Ok(_) => {}
-        Err(e) => {
-            tracing::warn!("Import failed: {:?}", e);
-            let _ = crate::api::instance::remove(&instance_id).await;
-            return Err(e);
-        }
-    }
+    }?;
 
     tracing::debug!("Completed import.");
     Ok(())
@@ -1123,6 +1129,93 @@ async fn collect_dotminecraft_files(
     Ok(collected)
 }
 
+async fn copy_import_file_atomically(
+    src: &Path,
+    dest: &Path,
+    io_semaphore: &IoSemaphore,
+) -> crate::Result<()> {
+    let _permit = io_semaphore.0.acquire().await?;
+    let parent = dest.parent().ok_or_else(|| {
+        crate::ErrorKind::InputError(format!(
+            "Import destination has no parent directory: {}",
+            dest.display()
+        ))
+    })?;
+    io::create_dir_all(parent).await?;
+
+    let temporary = create_import_temp_path(parent, ".axolotl-import-").await?;
+    io::copy(src, &temporary).await?;
+
+    let backup = if tokio::fs::try_exists(dest).await? {
+        let backup =
+            create_import_temp_path(parent, ".axolotl-import-backup-").await?;
+        tokio::fs::remove_file(&backup).await?;
+        tokio::fs::rename(dest, &backup).await.map_err(|error| {
+            crate::ErrorKind::IOError(IOError::with_path(error, dest))
+        })?;
+        Some(backup)
+    } else {
+        None
+    };
+
+    if let Err(error) = tokio::fs::rename(&temporary, dest).await {
+        if let Some(backup) = backup {
+            let backup_path = backup.to_path_buf();
+            if let Err(recovery_error) = tokio::fs::rename(&backup, dest).await
+            {
+                let retained_path = match backup.keep() {
+                    Ok(path) => path,
+                    Err(keep_error) => {
+                        return Err(crate::ErrorKind::FSError(format!(
+                            "Failed to replace '{}' ({error}) and restore the original file ({recovery_error}); preserving backup '{}' also failed ({keep_error})",
+                            dest.display(),
+                            backup_path.display(),
+                        ))
+                        .into());
+                    }
+                };
+                return Err(crate::ErrorKind::FSError(format!(
+                    "Failed to replace '{}' ({error}) and restore the original file ({recovery_error}); backup retained at '{}'",
+                    dest.display(),
+                    retained_path.display(),
+                ))
+                .into());
+            }
+        }
+        return Err(
+            crate::ErrorKind::IOError(IOError::with_path(error, dest)).into()
+        );
+    }
+
+    if let Some(backup) = backup {
+        let _ = tokio::fs::remove_file(backup).await;
+    }
+    Ok(())
+}
+
+async fn create_import_temp_path(
+    parent: &Path,
+    prefix: &str,
+) -> crate::Result<tempfile::TempPath> {
+    let parent = parent.to_path_buf();
+    let prefix = prefix.to_string();
+    Ok(tokio::task::spawn_blocking(move || {
+        TempFileBuilder::new()
+            .prefix(&prefix)
+            .tempfile_in(&parent)
+            .map(|file| file.into_temp_path())
+            .map_err(|error| {
+                crate::ErrorKind::IOError(IOError::with_path(error, &parent))
+            })
+    })
+    .await
+    .map_err(|error| {
+        crate::ErrorKind::FSError(format!(
+            "Import temp-file task failed: {error}"
+        ))
+    })??)
+}
+
 /// Copies the collected files into the instance profile concurrently, bounded
 /// by the I/O semaphore, reporting progress after every completed file.
 async fn copy_files_with_progress(
@@ -1143,43 +1236,47 @@ async fn copy_files_with_progress(
         })
         .map(|(src, dst)| {
             async move {
-                // Skip copying if destination file exists and is identical
-                if tokio::fs::metadata(&dst).await.is_ok()
-                    && let (Ok(src_meta), Ok(dst_meta)) = (
-                        tokio::fs::metadata(&src).await,
-                        tokio::fs::metadata(&dst).await,
-                    )
-                {
-                    // If files have identical size and modification time, skip copying
-                    if src_meta.len() == dst_meta.len()
-                        && src_meta.modified().ok() == dst_meta.modified().ok()
-                    {
-                        return Ok::<_, crate::Error>(());
-                    }
-                }
-
-                // Proceed with copy
-                fetch::copy(&src, &dst, io_semaphore).await?;
-                Ok(())
+                // Always copy the source file. Size and modification time are not
+                // a content identity, and the temporary-file swap prevents a
+                // failed copy from leaving a partial destination behind.
+                copy_import_file_atomically(&src, &dst, io_semaphore).await?;
+                Ok::<(), crate::Error>(())
             }
         })
         .collect();
 
     let mut completed: u64 = 0;
+    let mut first_error = None;
     while let Some(result) = copy_tasks.next().await {
-        result?;
-        completed += 1;
-        reporter
-            .update(
-                InstallPhaseId::PreparingInstance,
-                Some(InstallProgress {
-                    current: completed,
-                    total,
-                    secondary: None,
-                }),
-                details.clone(),
-            )
-            .await?;
+        match result {
+            Ok(()) => {
+                completed += 1;
+                if first_error.is_none()
+                    && let Err(error) = reporter
+                        .update(
+                            InstallPhaseId::PreparingInstance,
+                            Some(InstallProgress {
+                                current: completed,
+                                total,
+                                secondary: None,
+                            }),
+                            details.clone(),
+                        )
+                        .await
+                {
+                    first_error = Some(error);
+                }
+            }
+            Err(error) => {
+                if first_error.is_none() {
+                    first_error = Some(error);
+                }
+            }
+        }
+    }
+
+    if let Some(error) = first_error {
+        return Err(error);
     }
 
     // Final 100% report (ensures the bar fills even if reporter throttles the last update)
@@ -1196,6 +1293,42 @@ async fn copy_files_with_progress(
         .await?;
 
     Ok(())
+}
+
+#[cfg(test)]
+mod import_copy_tests {
+    use super::{IoSemaphore, copy_import_file_atomically};
+    use std::fs;
+    use tempfile::tempdir;
+    use tokio::sync::Semaphore;
+
+    #[tokio::test]
+    async fn replaces_existing_file_without_leaving_staging_files() {
+        let root = tempdir().unwrap();
+        let source = root.path().join("source.bin");
+        let destination = root.path().join("instance").join("config.bin");
+        fs::write(&source, b"new contents").unwrap();
+        fs::create_dir_all(destination.parent().unwrap()).unwrap();
+        fs::write(&destination, b"stale contents").unwrap();
+
+        copy_import_file_atomically(
+            &source,
+            &destination,
+            &IoSemaphore(Semaphore::new(1)),
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(fs::read(&destination).unwrap(), b"new contents");
+        let leftovers: Vec<_> = fs::read_dir(destination.parent().unwrap())
+            .unwrap()
+            .map(|entry| entry.unwrap().file_name())
+            .filter(|name| {
+                name.to_string_lossy().starts_with(".axolotl-import-")
+            })
+            .collect();
+        assert!(leftovers.is_empty(), "staging files remain: {leftovers:?}");
+    }
 }
 
 /// Determines the real game working directory for an import whose source is a
@@ -1663,5 +1796,61 @@ mod import_game_root_tests {
         fs::create_dir_all(empty.join("mods")).unwrap();
         fs::write(empty.join("mods/mod.jar"), "mod").unwrap();
         assert!(!dir_has_game_body(&empty));
+    }
+}
+
+#[cfg(test)]
+mod generic_instance_scan_tests {
+    use super::*;
+    use tempfile::tempdir;
+
+    #[tokio::test]
+    async fn finds_versions_inside_a_selected_folders_minecraft_directory() {
+        let folder = tempdir().unwrap();
+        let version_dir = folder
+            .path()
+            .join(".minecraft")
+            .join("versions")
+            .join("1.20.1-fabric");
+        std::fs::create_dir_all(&version_dir).unwrap();
+        std::fs::write(
+            version_dir.join("1.20.1-fabric.json"),
+            r#"{"id":"1.20.1-fabric","inheritsFrom":"1.20.1"}"#,
+        )
+        .unwrap();
+
+        let instances = get_generic_instances(folder.path()).await.unwrap();
+
+        assert_eq!(instances.len(), 1);
+        assert_eq!(instances[0].name, "versions/1.20.1-fabric");
+        assert_eq!(instances[0].path, version_dir.to_string_lossy());
+    }
+
+    #[tokio::test]
+    async fn versions_children_shadow_loose_container_jsons() {
+        // A shared game directory whose loose JSON files happen to embed
+        // loader coordinates (launcher/manager metadata) is a container, not
+        // an instance: the `versions` child must be the only candidate, and
+        // the container's json must not be detected instead.
+        let folder = tempdir().unwrap();
+        let mc = folder.path().join(".minecraft");
+        let version_dir = mc.join("versions").join("1.12.2-Cleanroom");
+        std::fs::create_dir_all(&version_dir).unwrap();
+        std::fs::write(
+            mc.join("axolotl_config.json"),
+            r#"{"lastVersion":"net.minecraftforge:forge:1.12.2-14.23.5.2864"}"#,
+        )
+        .unwrap();
+        std::fs::write(
+            version_dir.join("1.12.2-Cleanroom.json"),
+            r#"{"id":"1.12.2-Cleanroom","libraries":[{"name":"net.minecraftforge:forge:1.12.2-14.23.5.2864"}]}"#,
+        )
+        .unwrap();
+
+        let instances = get_generic_instances(&mc).await.unwrap();
+
+        assert_eq!(instances.len(), 1);
+        assert_eq!(instances[0].name, "versions/1.12.2-Cleanroom");
+        assert_eq!(instances[0].path, version_dir.to_string_lossy());
     }
 }

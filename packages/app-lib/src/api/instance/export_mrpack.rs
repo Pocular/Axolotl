@@ -51,8 +51,19 @@ pub async fn export_mrpack(
             "Tried to export a nonexistent instance {instance_id}!"
         ))
     })?;
+    // Directly associated instances own no files: everything lives in the
+    // linked launcher's `.minecraft`, so there is nothing exportable here.
+    if metadata.instance.is_direct_linked() {
+        return Err(crate::ErrorKind::InputError(format!(
+            "\"{}\" is directly associated with an external launcher; its \
+             files are managed by that launcher and cannot be exported",
+            metadata.instance.name
+        ))
+        .into());
+    }
     let included_export_candidates = included_export_candidates
         .into_iter()
+        .map(|candidate| candidate.replace('\\', "/"))
         .filter(|x| {
             if let Some(f) = PathBuf::from(x).file_name()
                 && f.to_string_lossy().starts_with(".DS_Store")
@@ -360,6 +371,51 @@ fn pack_get_relative_path(
     )?)
 }
 
+/// The `.mrpack` specification stores archive paths as Unix-style relative
+/// paths, even when the source instance is on Windows.
+fn mrpack_relative_path(
+    relative_path: &str,
+) -> crate::Result<SafeRelativeUtf8UnixPathBuf> {
+    Ok(SafeRelativeUtf8UnixPathBuf::try_from(
+        relative_path.replace('\\', "/"),
+    )?)
+}
+
+/// Maps an instance loader to the mrpack `dependencies` entry describing it.
+/// Returns `Ok(None)` for vanilla (no loader dependency) and an error for
+/// loaders the mrpack format cannot represent.
+fn mrpack_loader_dependency(
+    loader: ModLoader,
+    loader_version: Option<String>,
+) -> crate::Result<Option<(PackDependency, String)>> {
+    Ok(match (loader, loader_version) {
+        (ModLoader::Forge, Some(v)) => Some((PackDependency::Forge, v)),
+        (ModLoader::NeoForge, Some(v)) => Some((PackDependency::NeoForge, v)),
+        (ModLoader::Fabric, Some(v)) => Some((PackDependency::FabricLoader, v)),
+        (ModLoader::Quilt, Some(v)) => Some((PackDependency::QuiltLoader, v)),
+        (ModLoader::Cleanroom, Some(v)) => Some((PackDependency::Cleanroom, v)),
+        (ModLoader::Babric, _) => {
+            return Err(crate::ErrorKind::OtherError(
+                "Babric instances cannot be exported to mrpack, as the format has no Babric dependency type".to_string(),
+            )
+            .into())
+        }
+        (ModLoader::OptiFine, _) => {
+            return Err(crate::ErrorKind::OtherError(
+                "OptiFine instances cannot be exported to mrpack, as the format has no OptiFine dependency type".to_string(),
+            )
+            .into())
+        }
+        (ModLoader::Vanilla, _) => None,
+        _ => {
+            return Err(crate::ErrorKind::OtherError(
+                "Loader version mismatch".to_string(),
+            )
+            .into())
+        }
+    })
+}
+
 #[tracing::instrument(skip_all)]
 pub async fn create_mrpack_json(
     metadata: &InstanceMetadata,
@@ -378,41 +434,12 @@ async fn create_mrpack_json_inner(
     on_progress: &mut impl FnMut(f64),
 ) -> crate::Result<PackFormat> {
     let mut dependencies = HashMap::new();
-    match (
+    if let Some((dependency, version)) = mrpack_loader_dependency(
         metadata.applied_content_set.loader,
         metadata.applied_content_set.loader_version.clone(),
-    ) {
-        (ModLoader::Forge, Some(v)) => {
-            dependencies.insert(PackDependency::Forge, v)
-        }
-        (ModLoader::NeoForge, Some(v)) => {
-            dependencies.insert(PackDependency::NeoForge, v)
-        }
-        (ModLoader::Fabric, Some(v)) => {
-            dependencies.insert(PackDependency::FabricLoader, v)
-        }
-        (ModLoader::Quilt, Some(v)) => {
-            dependencies.insert(PackDependency::QuiltLoader, v)
-        }
-		(ModLoader::Babric, _) => {
-			return Err(crate::ErrorKind::OtherError(
-				"Babric instances cannot be exported to mrpack, as the format has no Babric dependency type".to_string(),
-			).into())
-		}
-        (ModLoader::Vanilla, _) => None,
-        (ModLoader::OptiFine, _) => {
-            return Err(crate::ErrorKind::OtherError(
-                "OptiFine instances cannot be exported to mrpack, as the format has no OptiFine dependency type".to_string(),
-            )
-            .into());
-        }
-        _ => {
-            return Err(crate::ErrorKind::OtherError(
-                "Loader version mismatch".to_string(),
-            )
-            .into());
-        }
-    };
+    )? {
+        dependencies.insert(dependency, version);
+    }
     dependencies.insert(
         PackDependency::Minecraft,
         metadata.applied_content_set.game_version.clone(),
@@ -562,9 +589,10 @@ async fn create_mrpack_json_inner(
         let Some((hashes, download)) = remote else {
             continue;
         };
-        let Ok(path) = SafeRelativeUtf8UnixPathBuf::try_from(
-            original_content_relative_path(path.as_str()),
-        ) else {
+        let relative_path = path.as_str().replace('\\', "/");
+        let Ok(path) = mrpack_relative_path(&original_content_relative_path(
+            &relative_path,
+        )) else {
             continue;
         };
         if !remote_paths.insert(path.as_str().to_string()) {
@@ -614,4 +642,114 @@ async fn add_all_recursive_folder_paths(
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::state::{CreateDirectLinkInstance, ModLoader, State};
+    use std::sync::Arc;
+    use tempfile::TempDir;
+
+    #[test]
+    fn mrpack_paths_normalize_windows_separators() {
+        let path =
+            super::mrpack_relative_path(r"config\subdir\options.txt").unwrap();
+
+        assert_eq!(path.as_str(), "config/subdir/options.txt");
+    }
+
+    #[test]
+    fn cleanroom_instances_export_a_cleanroom_dependency() {
+        let dependency = super::mrpack_loader_dependency(
+            ModLoader::Cleanroom,
+            Some("0.6.8-alpha".to_string()),
+        )
+        .unwrap()
+        .expect("cleanroom exports a dependency");
+
+        assert_eq!(
+            serde_json::to_value(dependency.0).unwrap(),
+            serde_json::json!("cleanroom")
+        );
+        assert_eq!(dependency.1, "0.6.8-alpha");
+    }
+
+    #[test]
+    fn cleanroom_without_version_still_reports_a_loader_mismatch() {
+        assert!(
+            super::mrpack_loader_dependency(ModLoader::Cleanroom, None)
+                .is_err()
+        );
+        assert!(
+            super::mrpack_loader_dependency(ModLoader::Forge, None).is_err()
+        );
+    }
+
+    /// The launcher state is a process-wide singleton; initialize it once and
+    /// reuse it so `State::get()` resolves inside these APIs. The state root
+    /// is intentionally leaked (`.keep()`) because the shared state outlives
+    /// this function.
+    async fn global_state() -> Arc<State> {
+        if !State::initialized() {
+            let root = TempDir::new().unwrap().keep();
+            let _ =
+                State::init_for_test(root.to_string_lossy().to_string()).await;
+        }
+        State::get().await.unwrap()
+    }
+
+    #[tokio::test]
+    async fn direct_link_instances_cannot_be_exported() {
+        let state = global_state().await;
+        let minecraft = TempDir::new().unwrap();
+        let version_dir = minecraft.path().join("versions/export-demo");
+        std::fs::create_dir_all(&version_dir).unwrap();
+        std::fs::write(
+            version_dir.join("export-demo.json"),
+            serde_json::to_vec_pretty(&serde_json::json!({
+                "id": "export-demo",
+                "inheritsFrom": "1.20.1",
+                "mainClass": "net.minecraft.client.main.Main"
+            }))
+            .unwrap(),
+        )
+        .unwrap();
+
+        let instance = crate::state::create_direct_link_instance(
+            CreateDirectLinkInstance {
+                name: None,
+                launcher_type:
+                    crate::api::pack::import::ImportLauncherType::Generic,
+                base_path: minecraft.path().to_path_buf(),
+                instance_folder: "versions/export-demo".to_string(),
+                instance_path: None,
+                game_dir_mode: None,
+            },
+            &state,
+        )
+        .await
+        .unwrap();
+
+        let export_target = minecraft.path().join("out.mrpack");
+        let error = super::export_mrpack(
+            &instance.id,
+            export_target,
+            Vec::new(),
+            None,
+            None,
+            None,
+        )
+        .await
+        .unwrap_err();
+
+        let message = error.to_string();
+        assert!(
+            message.contains("directly associated"),
+            "expected a friendly rejection, got: {message}"
+        );
+        assert!(
+            !minecraft.path().join("out.mrpack").exists(),
+            "no archive may be written"
+        );
+    }
 }

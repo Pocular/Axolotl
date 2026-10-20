@@ -19,7 +19,7 @@ pub mod install;
 mod launcher;
 mod logger;
 pub mod mod_metadata;
-mod state;
+pub mod state;
 pub mod storage;
 pub mod telemetry;
 
@@ -27,12 +27,16 @@ pub use api::*;
 pub use error::*;
 pub use event::{
     EventState, LoadingBar, LoadingBarType, emit::emit_loading,
-    emit::init_loading,
+    emit::emit_logshare_ai_event, emit::init_loading,
 };
-pub use logger::start_logger;
+pub use logger::{
+    DEFAULT_LOG_LEVEL, filter_log_contents, set_log_level, start_logger,
+};
 pub use state::db::{
-    backup_current_app_db_for_update, beta_database_exists,
-    copy_release_database_to_beta,
+    UpdateChannelState, backup_current_app_db_for_update, beta_database_exists,
+    copy_database_between_channels, copy_release_database_to_beta,
+    current_app_database_path, default_update_channel,
+    read_update_channel_state, update_channel_state_file_path,
 };
 pub use state::{DirectoryInfo, State};
 pub use storage::*;

@@ -30,7 +30,7 @@ use daedalus::{
 use futures::prelude::*;
 use reqwest::Method;
 use std::{
-    collections::HashSet,
+    collections::{HashMap, HashSet},
     future::Future,
     path::{Path, PathBuf},
     pin::Pin,
@@ -135,37 +135,35 @@ pub async fn copy_verified_local_artifact(
     progress: Option<&MinecraftDownloadProgress>,
     context: InstallErrorContext,
 ) -> crate::Result<bool> {
-    if !matches!(
-        classify_local_artifact(
-            Some(local),
-            destination,
-            relative_path,
-            expected_sha1,
-            expected_size,
-        )
-        .await?,
-        ArtifactAvailability::LocalReusable
-    ) {
-        return Ok(false);
-    }
-
+    let source = local.root.join(relative_path);
     if let Some(progress) = progress {
         progress.set_context(context.clone()).await?;
     }
+    let copied = match super::local_artifact::copy_verified(
+        &source,
+        destination,
+        expected_sha1,
+        expected_size,
+        &st.io_semaphore,
+    )
+    .await
+    {
+        Ok(copied) => copied,
+        Err(error) => {
+            if let Some(progress) = progress {
+                progress.persist_failure_context(context).await;
+            }
+            return Err(error);
+        }
+    };
+    if !copied {
+        return Ok(false);
+    }
 
-    let source = local.root.join(relative_path);
     let size = match expected_size {
         Some(size) => size,
         None => io::metadata(&source).await?.len(),
     };
-    if let Err(error) =
-        crate::util::fetch::copy(&source, destination, &st.io_semaphore).await
-    {
-        if let Some(progress) = progress {
-            progress.persist_failure_context(context).await;
-        }
-        return Err(error);
-    }
     if let Some(progress) = progress {
         progress.add_bytes(size).await?;
     }
@@ -207,7 +205,7 @@ impl MinecraftDownloadProgress {
         Ok(progress)
     }
 
-    async fn add_total(&self, total: u64) -> crate::Result<()> {
+    pub(crate) async fn add_total(&self, total: u64) -> crate::Result<()> {
         if total == 0 {
             return Ok(());
         }
@@ -217,7 +215,7 @@ impl MinecraftDownloadProgress {
             .await
     }
 
-    async fn add_bytes(&self, bytes: u64) -> crate::Result<()> {
+    pub(crate) async fn add_bytes(&self, bytes: u64) -> crate::Result<()> {
         if bytes == 0 {
             return Ok(());
         }
@@ -283,6 +281,11 @@ impl MinecraftDownloadProgress {
         current: u64,
         total: u64,
     ) -> crate::Result<()> {
+        // A zero total represents a fully cached/no-op Minecraft install.
+        // Persist it as a completed unit so parallel modpack progress does
+        // not remain indeterminate after the task returned successfully.
+        let (current, total) =
+            if total == 0 { (1, 1) } else { (current, total) };
         self.reporter
             .update(
                 InstallPhaseId::DownloadingMinecraft,
@@ -317,7 +320,14 @@ impl MinecraftDownloadProgress {
             .fetch_add(result.fallback_count as u64, Ordering::Relaxed);
     }
 
-    async fn finish(&self) -> crate::Result<()> {
+    pub(crate) async fn finish(&self) -> crate::Result<()> {
+        // The initial missing-byte estimate can be stale when another install,
+        // a local runtime source, or a cache satisfies the file before this
+        // task reaches it. A successful Minecraft install is terminal for this
+        // progress track, so publish its total as complete instead of leaving
+        // a misleading `0/N` download bar behind.
+        let total = self.total.load(Ordering::Relaxed);
+        self.emit_progress(total, total).await?;
         let source = self.source.lock().ok().and_then(|source| source.clone());
         let fallback_count = self.fallback_count.load(Ordering::Relaxed);
         if let Some(source) = source {
@@ -465,7 +475,7 @@ async fn download_minecraft_file_with_candidates(
     Ok(result)
 }
 
-fn minecraft_library_mirrors(url: &str) -> Vec<String> {
+pub(crate) fn minecraft_library_mirrors(url: &str) -> Vec<String> {
     const MACHINA_LWJGL_RELEASE: &str = "https://github.com/MinecraftMachina/lwjgl/releases/download/2.9.4-20150209-mmachina.2/";
     const MOJANG_LWJGL_PATH: &str = "https://libraries.minecraft.net/org/lwjgl/lwjgl/lwjgl-platform/2.9.4-nightly-20150209/";
 
@@ -477,7 +487,7 @@ fn minecraft_library_mirrors(url: &str) -> Vec<String> {
 }
 
 const LAUNCHER_META_MAVEN: &str = "https://launcher-meta.modrinth.com/maven";
-const LIBRARIES_MAVEN: &str = "https://libraries.minecraft.net";
+pub(crate) const LIBRARIES_MAVEN: &str = "https://libraries.minecraft.net";
 const FABRIC_MAVEN: &str = "https://maven.fabricmc.net";
 const FORGE_MAVEN: &str = "https://maven.minecraftforge.net";
 const NEOFORGE_MAVEN: &str = "https://maven.neoforged.net/releases";
@@ -485,7 +495,7 @@ const QUILT_MAVEN: &str = "https://maven.quiltmc.org/repository/release";
 const SPONGE_MAVEN: &str = "https://repo.spongepowered.org/maven";
 const MAVEN_CENTRAL: &str = "https://repo.maven.apache.org/maven2";
 
-fn legacy_library_download_urls(
+pub(crate) fn legacy_library_download_urls(
     repository: Option<&str>,
     artifact_path: &str,
 ) -> Option<Vec<String>> {
@@ -620,10 +630,103 @@ pub(crate) fn local_native_library_path(
 ) -> crate::Result<PathBuf> {
     let artifact_path = match native.path.as_deref() {
         Some(path) => path.to_string(),
-        None => classified_library_artifact_path(&library.name, classifier)?,
+        None => native_library_artifact_path(library, classifier)?,
     };
 
     Ok(Path::new("libraries").join(artifact_path))
+}
+
+pub(crate) fn is_native_library(library: &Library) -> bool {
+    library.natives.is_some()
+        || library_classifier(&library.name)
+            .is_some_and(|classifier| classifier.starts_with("natives-"))
+}
+
+/// Whether this library carries a Java artifact (regular JAR) that must be
+/// downloaded. Processor dependencies are represented by libraries with
+/// `include_in_classpath` set to false, so that flag cannot be used to decide
+/// whether the artifact is needed. A library can also have both a Java
+/// artifact and native classifiers after manifest merging (LWJGL is the
+/// canonical example); the two are independent and must not be treated as
+/// mutually exclusive.
+pub(crate) fn needs_java_artifact(library: &Library) -> bool {
+    // Four-part native coordinates (group:artifact:version:natives-*) store
+    // their native archive metadata in downloads.artifact, which is not a
+    // Java JAR. Exclude them so they only produce NativeArtifact tasks.
+    if library_classifier(&library.name)
+        .is_some_and(|classifier| classifier.starts_with("natives-"))
+    {
+        return false;
+    }
+    // Legacy pure-native libraries carry a natives map but no downloads.artifact;
+    // their main JAR is not downloaded by the original installer either.
+    if library.natives.is_some()
+        && library
+            .downloads
+            .as_ref()
+            .and_then(|downloads| downloads.artifact.as_ref())
+            .is_none_or(|artifact| artifact.url.trim().is_empty())
+        && library
+            .url
+            .as_deref()
+            .is_none_or(|url| url.trim().is_empty())
+    {
+        return false;
+    }
+    library
+        .downloads
+        .as_ref()
+        .and_then(|downloads| downloads.artifact.as_ref())
+        .is_some_and(|artifact| !artifact.url.trim().is_empty())
+        || library
+            .url
+            .as_deref()
+            .is_some_and(|url| !url.trim().is_empty())
+        || library.include_in_classpath
+}
+
+fn java_artifact_applies(
+    library: &Library,
+    java_arch: &str,
+    minecraft_updated: bool,
+) -> bool {
+    library.downloadable
+        && needs_java_artifact(library)
+        && library.rules.as_ref().is_none_or(|rules| {
+            parse_rules(
+                rules,
+                java_arch,
+                &QuickPlayType::None,
+                minecraft_updated,
+            )
+        })
+}
+
+fn library_classifier(library_name: &str) -> Option<&str> {
+    let mut coordinates = library_name.split(':');
+    coordinates.next()?;
+    coordinates.next()?;
+    coordinates.next()?;
+    coordinates
+        .next()
+        .and_then(|classifier| classifier.split('@').next())
+}
+
+pub(crate) fn native_library_artifact_path(
+    library: &Library,
+    classifier: &str,
+) -> crate::Result<String> {
+    // A four-part coordinate is only the native artifact path when its
+    // classifier is a native classifier. Other classifiers (sources,
+    // javadoc, etc.) can occur in loader metadata and must retain the
+    // legacy "append classifier" behaviour when this helper is reused.
+    if library_classifier(&library.name)
+        .is_some_and(|value| value.starts_with("natives-"))
+    {
+        Ok(d::get_path_from_artifact(&library.name)?)
+    } else {
+        classified_library_artifact_path(&library.name, classifier)
+    }
 }
 
 pub(crate) fn classified_library_artifact_path(
@@ -653,6 +756,7 @@ pub(crate) fn library_native_classifier(
         .map(|classifier| {
             classifier.replace("${arch}", crate::util::platform::ARCH_WIDTH)
         })
+        .or_else(|| library_classifier(&library.name).map(str::to_owned))
 }
 
 pub(crate) fn local_client_path(game_version: &str) -> PathBuf {
@@ -857,29 +961,29 @@ fn missing_library_bytes(
             continue;
         }
 
-        if library.natives.is_some() {
-            if let Some(classifier) =
+        // Native library size for this platform, if any.
+        if is_native_library(library)
+            && let Some(classifier) =
                 library_native_classifier(library, java_arch)
-                && let Some(native) = library
-                    .downloads
-                    .as_ref()
-                    .and_then(|downloads| downloads.classifiers.as_ref())
-                    .and_then(|classifiers| classifiers.get(&classifier))
-            {
-                total += native.size as u64;
-            }
-        } else {
+            && let Some(native) = library
+                .downloads
+                .as_ref()
+                .and_then(|downloads| downloads.classifiers.as_ref())
+                .and_then(|classifiers| classifiers.get(&classifier))
+        {
+            total += native.size as u64;
+        }
+
+        // Java artifact size. Mixed libraries carry both.
+        if needs_java_artifact(library) {
             let artifact_path = d::get_path_from_artifact(&library.name)?;
             let path = st.directories.libraries_dir().join(&artifact_path);
 
-            if path.exists() && !force {
-                continue;
-            }
-
-            if let Some(artifact) = library
-                .downloads
-                .as_ref()
-                .and_then(|downloads| downloads.artifact.as_ref())
+            if (!path.exists() || force)
+                && let Some(artifact) = library
+                    .downloads
+                    .as_ref()
+                    .and_then(|downloads| downloads.artifact.as_ref())
                 && !artifact.url.is_empty()
             {
                 total += artifact.size as u64;
@@ -922,7 +1026,7 @@ pub async fn download_minecraft(
     minecraft_updated: bool,
     reporter: Option<InstallProgressReporter>,
     phase_details: InstallPhaseDetails,
-) -> crate::Result<()> {
+) -> crate::Result<Option<MinecraftDownloadProgress>> {
     tracing::info!("Downloading Minecraft version {}", version.id);
     let progress = if let Some(reporter) = reporter {
         Some(
@@ -991,12 +1095,8 @@ pub async fn download_minecraft(
             Ok::<_, crate::Error>(())
         }
     }?;
-    if let Some(progress) = &progress {
-        progress.finish().await?;
-    }
-
     tracing::info!("Done downloading Minecraft!");
-    Ok(())
+    Ok(progress)
 }
 
 #[tracing::instrument(skip_all, fields(version = version.id.as_str(), loader = ?loader))]
@@ -1025,12 +1125,14 @@ pub async fn download_version_info(
             .err_into::<crate::Error>()
             .await
             .and_then(|ref it| Ok(serde_json::from_slice(it)?))?;
+        let normalized_timestamps =
+            normalize_version_timestamps(version, &mut info);
         let normalized =
             normalize_version_info(mod_loader, &version.id, &mut info, "cache");
         let restored_legacy_arguments =
             restore_legacy_minecraft_arguments(st, version, loader, &mut info)
                 .await?;
-        if normalized || restored_legacy_arguments {
+        if normalized_timestamps || normalized || restored_legacy_arguments {
             write_version_info(&path, serde_json::to_vec(&info)?).await?;
         }
         info
@@ -1166,6 +1268,7 @@ pub async fn download_version_info(
             info = d::modded::merge_partial_version(partial, info);
         }
 
+        normalize_version_timestamps(version, &mut info);
         normalize_version_info(mod_loader, &version.id, &mut info, "network");
 
         info.id.clone_from(&version_id);
@@ -1210,12 +1313,14 @@ pub async fn load_local_version_info(
 
     let bytes = io::read(&path).err_into::<crate::Error>().await?;
     let mut info: GameVersionInfo = serde_json::from_slice(&bytes)?;
+    let normalized_timestamps =
+        normalize_version_timestamps(version, &mut info);
     let normalized =
         normalize_version_info(mod_loader, &version.id, &mut info, "cache");
     let restored_legacy_arguments =
         restore_legacy_minecraft_arguments(st, version, loader, &mut info)
             .await?;
-    if normalized || restored_legacy_arguments {
+    if normalized_timestamps || normalized || restored_legacy_arguments {
         write_version_info(&path, serde_json::to_vec(&info)?).await?;
     }
     Ok(info)
@@ -1229,7 +1334,19 @@ async fn write_version_info(path: &Path, data: Vec<u8>) -> crate::Result<()> {
     Ok(())
 }
 
-const DERIVED_VERSION_CACHE_FORMAT: &str = "1";
+/// Bumped when derived loader metadata must be rebuilt from the base profile.
+const DERIVED_VERSION_CACHE_FORMAT: &str = "5";
+
+fn normalize_version_timestamps(
+    version: &GameVersion,
+    info: &mut GameVersionInfo,
+) -> bool {
+    let changed =
+        info.release_time != version.release_time || info.time != version.time;
+    info.release_time = version.release_time;
+    info.time = version.time;
+    changed
+}
 
 fn derived_version_cache_marker_path(path: &Path) -> PathBuf {
     path.with_extension("json.axolotl-format")
@@ -1327,6 +1444,27 @@ fn normalize_version_info(
     }
 
     let mut changed = !removed.is_empty();
+    // Cleanroom's Foundation bootstrap needs Java 21+. New installers declare
+    // this themselves; older alphas ship no javaVersion at all and would
+    // otherwise inherit vanilla 1.12.2's Java 8 and fail to launch.
+    if loader == ModLoader::Cleanroom
+        && version_info
+            .java_version
+            .as_ref()
+            .is_none_or(|java| java.major_version < 21)
+    {
+        version_info.java_version = Some(d::minecraft::JavaVersion {
+            component: "java-runtime-delta".to_string(),
+            major_version: 21,
+        });
+        tracing::info!(
+            loader = loader.as_meta_str(),
+            game_version,
+            version_info_source,
+            "Raised Cleanroom version profile to Java 21"
+        );
+        changed = true;
+    }
     if version_info
         .libraries
         .iter()
@@ -1552,7 +1690,8 @@ struct FallbackAsset {
     size: u64,
     url: String,
     resource_path: PathBuf,
-    legacy_resource_path: PathBuf,
+    legacy_resource_paths: Vec<PathBuf>,
+    logical_items: u32,
 }
 
 fn build_fallback_asset(
@@ -1571,11 +1710,77 @@ fn build_fallback_asset(
         size: asset.size as u64,
         url,
         resource_path: st.directories.object_dir(hash),
-        legacy_resource_path: st
-            .directories
-            .legacy_assets_dir()
-            .join(name.replace('/', &String::from(std::path::MAIN_SEPARATOR))),
+        legacy_resource_paths: vec![
+            st.directories.legacy_assets_dir().join(
+                name.replace('/', &String::from(std::path::MAIN_SEPARATOR)),
+            ),
+        ],
+        logical_items: 1,
     }
+}
+
+fn build_fallback_asset_from_batch(item: H2BatchAsset) -> FallbackAsset {
+    FallbackAsset {
+        name: item.sha1.clone(),
+        hash: item.sha1,
+        size: item.size,
+        url: item.original_url,
+        resource_path: item.destination,
+        legacy_resource_paths: item.legacy_destinations,
+        logical_items: item.logical_items,
+    }
+}
+
+/// Coalesce every fallback that writes the same physical object. This is
+/// especially important for legacy indexes, where several logical names can
+/// share one hash: concurrent local-reuse tasks would otherwise race on the
+/// same `.part` and destination paths.
+fn coalesce_fallback_assets(items: Vec<FallbackAsset>) -> Vec<FallbackAsset> {
+    let mut positions: HashMap<(PathBuf, String, u64), usize> = HashMap::new();
+    let mut coalesced: Vec<FallbackAsset> = Vec::new();
+    for mut item in items {
+        let key = (item.resource_path.clone(), item.hash.clone(), item.size);
+        if let Some(&position) = positions.get(&key) {
+            let existing = &mut coalesced[position];
+            existing.logical_items =
+                existing.logical_items.saturating_add(item.logical_items);
+            for legacy in item.legacy_resource_paths.drain(..) {
+                if !existing.legacy_resource_paths.contains(&legacy) {
+                    existing.legacy_resource_paths.push(legacy);
+                }
+            }
+        } else {
+            positions.insert(key, coalesced.len());
+            coalesced.push(item);
+        }
+    }
+    coalesced
+}
+
+/// Coalesce index aliases that refer to one physical object. The key includes
+/// the destination and full integrity contract so unrelated artifacts can
+/// never share a writer. Legacy paths remain separate outputs of that single
+/// committed object.
+fn coalesce_batch_assets(items: Vec<H2BatchAsset>) -> Vec<H2BatchAsset> {
+    let mut positions: HashMap<(PathBuf, String, u64), usize> = HashMap::new();
+    let mut coalesced: Vec<H2BatchAsset> = Vec::new();
+    for mut item in items {
+        let key = (item.destination.clone(), item.sha1.clone(), item.size);
+        if let Some(&position) = positions.get(&key) {
+            let existing = &mut coalesced[position];
+            existing.logical_items =
+                existing.logical_items.saturating_add(item.logical_items);
+            for legacy in item.legacy_destinations.drain(..) {
+                if !existing.legacy_destinations.contains(&legacy) {
+                    existing.legacy_destinations.push(legacy);
+                }
+            }
+        } else {
+            positions.insert(key, coalesced.len());
+            coalesced.push(item);
+        }
+    }
+    coalesced
 }
 
 #[tracing::instrument(skip_all)]
@@ -1605,7 +1810,7 @@ pub async fn download_assets(
     let mut legacy_copies = Vec::new();
     let mut fallback_assets = Vec::new();
     let mut skipped_count = 0_u64;
-    for (name, asset) in index.objects.iter() {
+    for (name, asset) in &index.objects {
         let hash = &asset.hash;
         let resource_path = st.directories.object_dir(hash);
         let legacy_resource_path = st
@@ -1619,7 +1824,14 @@ pub async fn download_assets(
             || force;
 
         if should_fetch_object {
-            if local_source.is_some() {
+            let local_candidate = !force
+                && super::local_artifact::candidate_is_usable(
+                    local_source,
+                    &local_asset_object_path(hash),
+                    Some(asset.size as u64),
+                )
+                .await?;
+            if local_candidate {
                 fallback_assets.push(build_fallback_asset(st, name, asset));
             } else {
                 let url = format!(
@@ -1627,12 +1839,16 @@ pub async fn download_assets(
                     sub_hash = &hash[..2]
                 );
                 batch_items.push(H2BatchAsset {
+                    original_url: url.clone(),
                     url,
                     destination: resource_path,
-                    legacy_destination: should_fetch_legacy
-                        .then_some(legacy_resource_path),
+                    legacy_destinations: should_fetch_legacy
+                        .then_some(legacy_resource_path)
+                        .into_iter()
+                        .collect(),
                     sha1: hash.clone(),
                     size: asset.size as u64,
+                    logical_items: 1,
                 });
             }
         } else if should_fetch_legacy {
@@ -1641,6 +1857,8 @@ pub async fn download_assets(
             skipped_count += 1;
         }
     }
+
+    let mut batch_items = coalesce_batch_assets(batch_items);
 
     // Batch-download the object files over a single shared HTTP/2 connection:
     // hundreds of concurrent multiplexed streams, one connection per
@@ -1653,8 +1871,7 @@ pub async fn download_assets(
             ResourceClass::MinecraftAsset,
             source_mode,
         );
-        let apply_native_policy = crate::util::download::active_engine()
-            != crate::util::download::DownloadEngine::XmclCompat;
+        let apply_native_policy = true;
         if apply_native_policy {
             let probe_request =
                 DownloadRequest::new(&first_url, ResourceClass::MinecraftAsset)
@@ -1665,7 +1882,7 @@ pub async fn download_assets(
             prepare_native_download_routes(
                 &probe_request,
                 &mut routes,
-                &st.fetch_semaphore,
+                &st.download_semaphore,
             )
             .await;
         }
@@ -1676,7 +1893,6 @@ pub async fn download_assets(
             // Items whose resolved URL targets a different authority cannot
             // share the batch connection and go through the per-file path.
             let route_authority = url_authority(&route.url);
-            let mut reroute = Vec::new();
             for item in &mut batch_items {
                 let item_routes = resolve_download_routes_for(
                     &item.url,
@@ -1693,22 +1909,15 @@ pub async fn download_assets(
                     .or_else(|| item_routes.first())
                     .map(|route| route.url.clone())
                     .unwrap_or_else(|| item.url.clone());
-                if url_authority(&item.url) != route_authority {
-                    reroute.push(item.sha1.clone());
-                }
             }
-            if !reroute.is_empty() {
-                let reroute_hashes = reroute
-                    .iter()
-                    .map(String::as_str)
-                    .collect::<std::collections::HashSet<_>>();
-                for (name, asset) in index.objects.iter() {
-                    if reroute_hashes.contains(asset.hash.as_str()) {
-                        fallback_assets
-                            .push(build_fallback_asset(st, name, asset));
-                    }
-                }
-            }
+            let (batch_items, rerouted_items): (Vec<_>, Vec<_>) = batch_items
+                .into_iter()
+                .partition(|item| url_authority(&item.url) == route_authority);
+            fallback_assets.extend(
+                rerouted_items
+                    .into_iter()
+                    .map(build_fallback_asset_from_batch),
+            );
             let callback = {
                 let progress = progress.clone();
                 let loading_bar = loading_bar.cloned();
@@ -1716,16 +1925,17 @@ pub async fn download_assets(
                     let progress = progress.clone();
                     let loading_bar = loading_bar.clone();
                     Box::pin(async move {
-                        if let Some(progress) = progress {
-                            if let Err(error) = progress.add_bytes(item.size).await {
-                                tracing::warn!(
-                                    error = %error,
-                                    "Failed to record batch asset bytes"
-                                );
+                        for _ in 0..item.logical_items {
+                            if let Some(progress) = &progress
+                                && let Err(error) = progress.add_bytes(item.size).await {
+                                    tracing::warn!(
+                                        error = %error,
+                                        "Failed to record batch asset bytes"
+                                    );
+                                }
+                            if let Some(loading_bar) = &loading_bar {
+                                let _ = emit_loading(loading_bar, per_file_fraction, None);
                             }
-                        }
-                        if let Some(loading_bar) = loading_bar {
-                            let _ = emit_loading(&loading_bar, per_file_fraction, None);
                         }
                     })
                 }
@@ -1733,12 +1943,12 @@ pub async fn download_assets(
             let failed = download_asset_batch_via_h2(
                 &route,
                 batch_items,
-                ASSET_BATCH_CONCURRENCY,
+                ASSET_BATCH_CONCURRENCY.min(st.download_concurrency()),
                 apply_native_policy,
-                apply_native_policy.then_some(&st.fetch_semaphore),
+                apply_native_policy.then_some(&st.download_semaphore),
                 callback,
             )
-            .await;
+            .await?;
             if !failed.is_empty() {
                 tracing::warn!(
                     items = failed.len(),
@@ -1747,22 +1957,15 @@ pub async fn download_assets(
                     failed.len(),
                     route.source.as_str(),
                 );
-                let failed_hashes = failed
-                    .iter()
-                    .map(|item| item.sha1.as_str())
-                    .collect::<std::collections::HashSet<_>>();
-                for (name, asset) in index.objects.iter() {
-                    if failed_hashes.contains(asset.hash.as_str()) {
-                        fallback_assets
-                            .push(build_fallback_asset(st, name, asset));
-                    }
-                }
+                fallback_assets.extend(
+                    failed.into_iter().map(build_fallback_asset_from_batch),
+                );
             }
         } else {
             // No route could be resolved; fall back to per-file for all.
-            for (name, asset) in index.objects.iter() {
-                fallback_assets.push(build_fallback_asset(st, name, asset));
-            }
+            fallback_assets.extend(
+                batch_items.into_iter().map(build_fallback_asset_from_batch),
+            );
         }
     }
 
@@ -1801,9 +2004,9 @@ pub async fn download_assets(
     // Per-file fallback path: local runtime reuse, no batch route, or batch
     // failures. Runs concurrently (same budget as the original scheduler) so
     // import flows are not serialised.
+    let fallback_assets = coalesce_fallback_assets(fallback_assets);
     if !fallback_assets.is_empty() {
         let limit = crate::util::download::task_concurrency_limit(st)
-            .map(|limit| limit.saturating_mul(2))
             .unwrap_or(ASSET_BATCH_CONCURRENCY);
         futures::stream::iter(fallback_assets)
             .map(Ok::<FallbackAsset, crate::Error>)
@@ -1811,17 +2014,20 @@ pub async fn download_assets(
                 let progress = progress.clone();
                 async move {
                     let resource_path = &item.resource_path;
-                    let legacy_resource_path = &item.legacy_resource_path;
                     let hash = &item.hash;
                     let name = &item.name;
                     let should_fetch_object = force
                         || !asset_file_is_usable(resource_path, item.size);
-                    let should_fetch_legacy = (with_legacy
-                        && !asset_file_is_usable(
-                            legacy_resource_path,
-                            item.size,
-                        ))
-                        || force;
+                    let legacy_resource_paths = item
+                        .legacy_resource_paths
+                        .iter()
+                        .filter(|path| {
+                            force
+                                || (with_legacy
+                                    && !asset_file_is_usable(path, item.size))
+                        })
+                        .collect::<Vec<_>>();
+                    let should_fetch_legacy = !legacy_resource_paths.is_empty();
                     let fetch_progress =
                         if should_fetch_object || should_fetch_legacy {
                             progress.clone()
@@ -1866,24 +2072,37 @@ pub async fn download_assets(
                         } else {
                             tracing::trace!("Fetched asset with hash {hash}");
                         }
-                    }
-                    if should_fetch_legacy {
-                        crate::util::fetch::copy(
-                            resource_path,
-                            legacy_resource_path,
-                            &st.io_semaphore,
-                        )
-                        .await?;
-                        if !should_fetch_object
+                        if item.logical_items > 1
                             && let Some(progress) = &fetch_progress
                         {
-                            progress.add_bytes(item.size).await?;
+                            for _ in 1..item.logical_items {
+                                progress.add_bytes(item.size).await?;
+                            }
                         }
-                        tracing::trace!("Copied legacy asset with hash {hash}");
+                    }
+                    if should_fetch_legacy {
+                        for legacy_resource_path in legacy_resource_paths {
+                            crate::util::fetch::copy(
+                                resource_path,
+                                legacy_resource_path,
+                                &st.io_semaphore,
+                            )
+                            .await?;
+                            if !should_fetch_object
+                                && let Some(progress) = &fetch_progress
+                            {
+                                progress.add_bytes(item.size).await?;
+                            }
+                            tracing::trace!(
+                                "Copied legacy asset with hash {hash}"
+                            );
+                        }
                     }
 
                     if let Some(loading_bar) = loading_bar {
-                        emit_loading(loading_bar, per_file_fraction, None)?;
+                        for _ in 0..item.logical_items {
+                            emit_loading(loading_bar, per_file_fraction, None)?;
+                        }
                     }
                     tracing::trace!("Loaded asset with hash {hash}");
                     Ok::<_, crate::Error>(())
@@ -1924,301 +2143,388 @@ pub async fn download_libraries(
         io::create_dir_all(st.directories.libraries_dir()),
         io::create_dir_all(st.directories.version_natives_dir(version))
     }?;
-    let mut libraries_for_download: Vec<_> = libraries
-        .iter()
-        .filter(|library| library.natives.is_none())
-        .collect();
-    libraries_for_download.extend(native_libraries_to_download(
-        libraries,
-        java_arch,
-        minecraft_updated,
-    )?);
-    let num_files = libraries_for_download.len();
+
+    // Plan individual file download tasks instead of treating each
+    // Library as mutually exclusive "normal or native". A merged library
+    // (e.g. LWJGL after manifest merging) may carry both a Java artifact
+    // and a native classifier for this platform; both become independent
+    // concurrent tasks so neither is starved by the other.
+    enum LibraryDownloadTask<'a> {
+        JavaArtifact(&'a Library),
+        NativeArtifact(&'a Library),
+    }
+
+    let mut tasks: Vec<LibraryDownloadTask<'_>> = Vec::new();
+
+    // Java artifact tasks: every library with a downloadable Java JAR.
+    // Deduplicate by target path so repeated manifest entries download once.
+    let mut seen_java_paths = std::collections::HashSet::new();
+    for library in libraries {
+        if !java_artifact_applies(library, java_arch, minecraft_updated) {
+            continue;
+        }
+        let target = d::get_path_from_artifact(&library.name)
+            .unwrap_or_else(|_| library.name.clone());
+        if seen_java_paths.insert(target) {
+            tasks.push(LibraryDownloadTask::JavaArtifact(library));
+        }
+    }
+
+    // Native artifact tasks: reuse the existing native planner, which
+    // handles rules, classifier existence and SHA-1 deduplication.
+    for library in
+        native_libraries_to_download(libraries, java_arch, minecraft_updated)?
+    {
+        tasks.push(LibraryDownloadTask::NativeArtifact(library));
+    }
+
+    let num_files = tasks.len();
     loading_try_for_each_concurrent(
-		stream::iter(libraries_for_download).map(Ok::<&Library, crate::Error>),
-		crate::util::download::task_concurrency_limit(&st).map(|limit| limit.saturating_mul(2)),
+		stream::iter(tasks).map(Ok::<LibraryDownloadTask<'_>, crate::Error>),
+		crate::util::download::task_concurrency_limit(st),
         loading_bar,
         loading_amount,
         num_files,
         None,
-        |library| {
+        |task| {
             let progress = progress.clone();
             async move {
-            if let Some(rules) = &library.rules
-                && !parse_rules(
-                    rules,
-                    java_arch,
-                    &QuickPlayType::None,
-                    minecraft_updated,
-                )
-            {
-                tracing::trace!("Skipped library {}", &library.name);
-                return Ok(());
-            }
+                let library = match &task {
+                    LibraryDownloadTask::JavaArtifact(lib) => *lib,
+                    LibraryDownloadTask::NativeArtifact(lib) => *lib,
+                };
 
-            if !library.downloadable {
-                tracing::trace!(
-                    "Skipped non-downloadable library {}",
-                    &library.name
-                );
-                return Ok(());
-            }
+                if let Some(rules) = &library.rules
+                    && !parse_rules(
+                        rules,
+                        java_arch,
+                        &QuickPlayType::None,
+                        minecraft_updated,
+                    )
+                {
+                    tracing::trace!("Skipped library {}", &library.name);
+                    return Ok(());
+                }
 
-            if library.natives.is_some() {
-                let Some(classifier) =
-                    library_native_classifier(library, java_arch)
-                else {
+                if !library.downloadable {
                     tracing::trace!(
-                        "Skipped native library without a classifier for this platform: {}",
+                        "Skipped non-downloadable library {}",
                         &library.name
                     );
                     return Ok(());
-                };
-                let native = library
-                    .downloads
-                    .as_ref()
-                    .and_then(|downloads| downloads.classifiers.as_ref())
-                    .and_then(|classifiers| classifiers.get(&classifier));
-                let _native_archive_path = if let Some(native) = native {
-                    let path = st
-                        .directories
-                        .caches_dir()
-                        .join("minecraft-natives")
-                        .join(format!("{}.jar", native.sha1));
-                    let context = InstallErrorContext::new(
-                        "download Minecraft native library",
-                    )
-                    .minecraft_version(version.to_string())
-                    .file_path(library.name.clone())
-                    .target_path(path.display().to_string())
-                    .build();
-                    let local_relative =
-                        local_native_library_path(library, native, &classifier)?;
-                    let reused = download_or_reuse_local(
-                        st,
-                        local_source,
-                        &local_relative,
-                        &path,
-                        Some(&native.sha1),
-                        Some(native.size as u64),
-                        progress.as_ref(),
-                        context.clone(),
-                        force,
-                        || {
-                            download_minecraft_file(
+
+                }
+                match task {
+                    LibraryDownloadTask::JavaArtifact(library) => {
+                    let artifact_path = d::get_path_from_artifact(&library.name)?;
+                    let path = st.directories.libraries_dir().join(&artifact_path);
+
+                    if path.exists() && !force {
+                        // already present; skip Java artifact download but continue to natives
+                    } else if let Some(d::minecraft::LibraryDownloads {
+                        artifact: Some(ref artifact),
+                        ..
+                    }) = library.downloads
+                        && !artifact.url.is_empty()
+                    {
+                        let local_relative = local_library_path(&library.name)?;
+                        let context = InstallErrorContext::new(
+                            "download Minecraft library",
+                        )
+                        .minecraft_version(version.to_string())
+                        .file_path(library.name.clone())
+                        .target_path(path.display().to_string())
+                        .build();
+                        let reused = download_or_reuse_local(
+                            st,
+                            local_source,
+                            &local_relative,
+                            &path,
+                            Some(&artifact.sha1),
+                            Some(artifact.size as u64),
+                            progress.as_ref(),
+                            context.clone(),
+                            force,
+                            || {
+                                download_minecraft_file(
+                                    st,
+                                    &artifact.url,
+                                    Some(&artifact.sha1),
+                                    Some(artifact.size as u64),
+                                    &path,
+                                    ResourceClass::MinecraftLibrary,
+                                    ContentValidation::None,
+                                    force,
+                                    progress.clone(),
+                                    context,
+                                )
+                            },
+                        )
+                        .await?;
+                        if reused {
+                            tracing::trace!(
+                                "Reused library {} to path {:?}",
+                                &library.name,
+                                &path
+                            );
+                        } else {
+                            tracing::trace!(
+                                "Fetched library {} to path {:?}",
+                                &library.name,
+                                &path
+                            );
+                        }
+                    } else {
+                        let Some(urls) = legacy_library_download_urls(
+                            library.url.as_deref(),
+                            &artifact_path,
+                        ) else {
+                            return Err(crate::ErrorKind::LauncherError(format!(
+                                "No safe Maven repository is known for required library {}",
+                                library.name
+                            ))
+                            .into());
+                        };
+
+                        let local_relative = local_library_path(&library.name)?;
+                        let context = InstallErrorContext::new(
+                            "download loader library",
+                        )
+                        .minecraft_version(version.to_string())
+                        .file_path(library.name.clone())
+                        .target_path(path.display().to_string())
+                        .build();
+                        let reused = download_or_reuse_local(
+                            st,
+                            local_source,
+                            &local_relative,
+                            &path,
+                            legacy_library_sha1(library),
+                            None,
+                            progress.as_ref(),
+                            context.clone(),
+                            force,
+                            || {
+                                download_minecraft_file_with_candidates(
+                                    st,
+                                    &urls,
+                                    legacy_library_sha1(library),
+                                    None,
+                                    &path,
+                                    ResourceClass::Loader,
+                                    legacy_library_content_validation(&artifact_path),
+                                    force,
+                                    progress.clone(),
+                                    context,
+                                )
+                            },
+                        )
+                        .await?;
+                        if reused {
+                            tracing::debug!(
+                                "Reused legacy library {} to path {:?}",
+                                &library.name,
+                                &path
+                            );
+                        } else {
+                            tracing::debug!(
+                                "Fetched legacy library {} to path {:?}",
+                                &library.name,
+                                &path
+                            );
+                        }
+                    }
+                    }
+                    LibraryDownloadTask::NativeArtifact(library) => {
+                    if let Some(classifier) =
+                        library_native_classifier(library, java_arch)
+                    {
+                        let native = library
+                            .downloads
+                            .as_ref()
+                            .and_then(|downloads| downloads.classifiers.as_ref())
+                            .and_then(|classifiers| classifiers.get(&classifier));
+                        let _native_archive_path = if let Some(native) = native {
+                            let path = st
+                                .directories
+                                .caches_dir()
+                                .join("minecraft-natives")
+                                .join(format!("{}.jar", native.sha1));
+                            let context = InstallErrorContext::new(
+                                "download Minecraft native library",
+                            )
+                            .minecraft_version(version.to_string())
+                            .file_path(library.name.clone())
+                            .target_path(path.display().to_string())
+                            .build();
+                            let local_relative =
+                                local_native_library_path(library, native, &classifier)?;
+                            let reused = download_or_reuse_local(
                                 st,
-                                &native.url,
+                                local_source,
+                                &local_relative,
+                                &path,
                                 Some(&native.sha1),
                                 Some(native.size as u64),
-                                &path,
-                                ResourceClass::MinecraftLibrary,
-                                ContentValidation::Jar,
+                                progress.as_ref(),
+                                context.clone(),
                                 force,
-                                progress.clone(),
-                                context,
+                                || {
+                                    download_minecraft_file(
+                                        st,
+                                        &native.url,
+                                        Some(&native.sha1),
+                                        Some(native.size as u64),
+                                        &path,
+                                        ResourceClass::MinecraftLibrary,
+                                        ContentValidation::Jar,
+                                        force,
+                                        progress.clone(),
+                                        context,
+                                    )
+                                },
                             )
-                        },
-                    )
-                    .await?;
-                    if reused {
-                        tracing::trace!("Reused native {}", &library.name);
-                    }
-                    path
-                } else {
-                    let artifact_path = classified_library_artifact_path(
-                        &library.name,
-                        &classifier,
-                    )?;
-                    let path =
-                        st.directories.libraries_dir().join(&artifact_path);
-                    let Some(urls) = legacy_library_download_urls(
-                        library.url.as_deref(),
-                        &artifact_path,
-                    ) else {
-                        return Err(crate::ErrorKind::LauncherError(format!(
-                            "No safe Maven repository is known for required native library {}",
-                            library.name
-                        ))
-                        .into());
-                    };
-                    let local_relative =
-                        Path::new("libraries").join(&artifact_path);
-                    let context = InstallErrorContext::new(
-                        "download loader native library",
-                    )
-                    .minecraft_version(version.to_string())
-                    .file_path(format!("{}:{classifier}", library.name))
-                    .urls(urls.clone())
-                    .target_path(path.display().to_string())
-                    .build();
-                    let reused = download_or_reuse_local(
-                        st,
-                        local_source,
-                        &local_relative,
-                        &path,
-                        None,
-                        None,
-                        progress.as_ref(),
-                        context.clone(),
-                        force,
-                        || {
-                            download_minecraft_file_with_candidates(
+                            .await?;
+                            if reused {
+                                tracing::trace!("Reused native {}", &library.name);
+                            }
+                            path
+                        } else if library_classifier(&library.name)
+                            .is_some_and(|value| value.starts_with("natives-"))
+                            && let Some(artifact) = library
+                                .downloads
+                                .as_ref()
+                                .and_then(|downloads| downloads.artifact.as_ref())
+                                .filter(|artifact| !artifact.url.trim().is_empty())
+                        {
+                            let artifact_path =
+                                native_library_artifact_path(library, &classifier)?;
+                            let path = st
+                                .directories
+                                .libraries_dir()
+                                .join(&artifact_path);
+                            let local_relative =
+                                Path::new("libraries").join(&artifact_path);
+                            let context = InstallErrorContext::new(
+                                "download Minecraft native library",
+                            )
+                            .minecraft_version(version.to_string())
+                            .file_path(format!("{}:{classifier}", library.name))
+                            .target_path(path.display().to_string())
+                            .build();
+                            let reused = download_or_reuse_local(
                                 st,
-                                &urls,
-                                None,
-                                None,
+                                local_source,
+                                &local_relative,
                                 &path,
-                                ResourceClass::Loader,
-                                ContentValidation::Jar,
-                                force,
-                                progress.clone(),
-                                context,
-                            )
-                        },
-                    )
-                    .await?;
-                    if reused {
-                        tracing::debug!(
-                            "Reused legacy native {} to path {:?}",
-                            &library.name,
-                            &path
-                        );
-                    } else {
-                        tracing::debug!(
-                            "Fetched legacy native {} to path {:?}",
-                            &library.name,
-                            &path
-                        );
-                    }
-                    path
-                };
-
-                tracing::debug!("Downloaded native {}", &library.name);
-            } else {
-                let artifact_path = d::get_path_from_artifact(&library.name)?;
-                let path = st.directories.libraries_dir().join(&artifact_path);
-
-                if path.exists() && !force {
-                    return Ok(());
-                }
-
-                if let Some(d::minecraft::LibraryDownloads {
-                    artifact: Some(ref artifact),
-                    ..
-                }) = library.downloads
-                    && !artifact.url.is_empty()
-                {
-                    let local_relative = local_library_path(&library.name)?;
-                    let context = InstallErrorContext::new(
-                        "download Minecraft library",
-                    )
-                    .minecraft_version(version.to_string())
-                    .file_path(library.name.clone())
-                    .target_path(path.display().to_string())
-                    .build();
-                    let reused = download_or_reuse_local(
-                        st,
-                        local_source,
-                        &local_relative,
-                        &path,
-                        Some(&artifact.sha1),
-                        Some(artifact.size as u64),
-                        progress.as_ref(),
-                        context.clone(),
-                        force,
-                        || {
-                            download_minecraft_file(
-                                st,
-                                &artifact.url,
                                 Some(&artifact.sha1),
                                 Some(artifact.size as u64),
-                                &path,
-                                ResourceClass::MinecraftLibrary,
-                                ContentValidation::None,
+                                progress.as_ref(),
+                                context.clone(),
                                 force,
-                                progress.clone(),
-                                context,
+                                || {
+                                    download_minecraft_file(
+                                        st,
+                                        &artifact.url,
+                                        Some(&artifact.sha1),
+                                        Some(artifact.size as u64),
+                                        &path,
+                                        ResourceClass::MinecraftLibrary,
+                                        ContentValidation::Jar,
+                                        force,
+                                        progress.clone(),
+                                        context,
+                                    )
+                                },
                             )
-                        },
-                    )
-                    .await?;
-                    if reused {
-                        tracing::trace!(
-                            "Reused library {} to path {:?}",
-                            &library.name,
-                            &path
-                        );
-                    } else {
-                        tracing::trace!(
-                            "Fetched library {} to path {:?}",
-                            &library.name,
-                            &path
-                        );
-                    }
-                } else {
-                    let Some(urls) = legacy_library_download_urls(
-                        library.url.as_deref(),
-                        &artifact_path,
-                    ) else {
-                        return Err(crate::ErrorKind::LauncherError(format!(
-                            "No safe Maven repository is known for required library {}",
-                            library.name
-                        ))
-                        .into());
-                    };
-
-                    let local_relative = local_library_path(&library.name)?;
-                    let context = InstallErrorContext::new(
-                        "download loader library",
-                    )
-                    .minecraft_version(version.to_string())
-                    .file_path(library.name.clone())
-                    .target_path(path.display().to_string())
-                    .build();
-                    let reused = download_or_reuse_local(
-                        st,
-                        local_source,
-                        &local_relative,
-                        &path,
-                        legacy_library_sha1(library),
-                        None,
-                        progress.as_ref(),
-                        context.clone(),
-                        force,
-                        || {
-                            download_minecraft_file_with_candidates(
+                            .await?;
+                            if reused {
+                                tracing::trace!("Reused native {}", &library.name);
+                            } else {
+                                tracing::trace!("Fetched native {}", &library.name);
+                            }
+                            path
+                        } else {
+                            let artifact_path = native_library_artifact_path(
+                                library,
+                                &classifier,
+                            )?;
+                            let path =
+                                st.directories.libraries_dir().join(&artifact_path);
+                            let Some(urls) = legacy_library_download_urls(
+                                library.url.as_deref(),
+                                &artifact_path,
+                            ) else {
+                                return Err(crate::ErrorKind::LauncherError(format!(
+                                    "No safe Maven repository is known for required native library {}",
+                                    library.name
+                                ))
+                                .into());
+                            };
+                            let local_relative =
+                                Path::new("libraries").join(&artifact_path);
+                            let context = InstallErrorContext::new(
+                                "download loader native library",
+                            )
+                            .minecraft_version(version.to_string())
+                            .file_path(format!("{}:{classifier}", library.name))
+                            .urls(urls.clone())
+                            .target_path(path.display().to_string())
+                            .build();
+                            let reused = download_or_reuse_local(
                                 st,
-                                &urls,
-                                legacy_library_sha1(library),
-                                None,
+                                local_source,
+                                &local_relative,
                                 &path,
-                                ResourceClass::Loader,
-                                legacy_library_content_validation(&artifact_path),
+                                None,
+                                None,
+                                progress.as_ref(),
+                                context.clone(),
                                 force,
-                                progress.clone(),
-                                context,
+                                || {
+                                    download_minecraft_file_with_candidates(
+                                        st,
+                                        &urls,
+                                        None,
+                                        None,
+                                        &path,
+                                        ResourceClass::Loader,
+                                        ContentValidation::Jar,
+                                        force,
+                                        progress.clone(),
+                                        context,
+                                    )
+                                },
                             )
-                        },
-                    )
-                    .await?;
-                    if reused {
-                        tracing::debug!(
-                            "Reused legacy library {} to path {:?}",
-                            &library.name,
-                            &path
-                        );
+                            .await?;
+                            if reused {
+                                tracing::debug!(
+                                    "Reused legacy native {} to path {:?}",
+                                    &library.name,
+                                    &path
+                                );
+                            } else {
+                                tracing::debug!(
+                                    "Fetched legacy native {} to path {:?}",
+                                    &library.name,
+                                    &path
+                                );
+                            }
+                            path
+                        };
+
+                        tracing::debug!("Downloaded native {}", &library.name);
                     } else {
-                        tracing::debug!(
-                            "Fetched legacy library {} to path {:?}",
-                            &library.name,
-                            &path
+                        tracing::trace!(
+                            "Skipped native library without a classifier for this platform: {}",
+                            &library.name
                         );
                     }
                 }
-            }
+                }
 
-            tracing::debug!("Loaded library {}", library.name);
-            Ok(())
+                tracing::debug!("Loaded library {}", library.name);
+                Ok(())
             }
         },
     )
@@ -2247,7 +2553,7 @@ fn native_libraries_to_download<'a>(
     let mut identities = HashSet::new();
     let mut result = Vec::new();
     for library in libraries {
-        if library.natives.is_none() || !library.downloadable {
+        if !is_native_library(library) || !library.downloadable {
             continue;
         }
         if let Some(rules) = &library.rules
@@ -2271,7 +2577,7 @@ fn native_libraries_to_download<'a>(
             .and_then(|classifiers| classifiers.get(&classifier))
             .filter(|download| !download.sha1.is_empty())
             .map_or_else(
-                || classified_library_artifact_path(&library.name, &classifier),
+                || native_library_artifact_path(library, &classifier),
                 |download| Ok(download.sha1.clone()),
             )?;
         if identities.insert(identity.clone()) {
@@ -2368,6 +2674,284 @@ mod tests {
         Some(values.iter().map(|value| (*value).to_string()).collect())
     }
 
+    fn version_info_with_java(
+        java: Option<d::minecraft::JavaVersion>,
+    ) -> GameVersionInfo {
+        let mut info: GameVersionInfo = serde_json::from_value(serde_json::json!({
+            "assetIndex": {"id": "1.12", "sha1": "", "size": 0, "totalSize": 0, "url": ""},
+            "assets": "1.12",
+            "downloads": {},
+            "id": "1.12.2",
+            "libraries": [],
+            "mainClass": "net.minecraft.client.main.Main",
+            "minimumLauncherVersion": 21,
+            "releaseTime": "2026-01-01T00:00:00+00:00",
+            "time": "2026-01-01T00:00:00+00:00",
+            "type": "release"
+        }))
+        .unwrap();
+        info.java_version = java;
+        info
+    }
+
+    #[test]
+    fn cleanroom_without_java_version_is_raised_to_java_21() {
+        let mut info = version_info_with_java(None);
+        assert!(normalize_version_info(
+            ModLoader::Cleanroom,
+            "1.12.2",
+            &mut info,
+            "network",
+        ));
+        let java = info.java_version.expect("java version pinned");
+        assert_eq!(java.major_version, 21);
+        assert_eq!(java.component, "java-runtime-delta");
+    }
+
+    #[tokio::test]
+    async fn cached_loader_timestamps_are_corrected_online_and_offline() {
+        let temp = tempfile::tempdir().unwrap();
+        let directories = crate::state::DirectoryInfo {
+            settings_dir: temp.path().join("settings"),
+            config_dir: temp.path().join("config"),
+            app_identifier: "test".to_string(),
+        };
+        std::fs::create_dir_all(directories.instances_dir()).unwrap();
+        let pool = sqlx::sqlite::SqlitePoolOptions::new()
+            .max_connections(1)
+            .connect("sqlite::memory:")
+            .await
+            .unwrap();
+        sqlx::migrate!().run(&pool).await.unwrap();
+        let state = crate::state::test_state(directories, pool).await.unwrap();
+        let version: GameVersion = serde_json::from_value(serde_json::json!({
+			"id": "1.12.2", "type": "release", "url": "invalid://no-network",
+			"releaseTime": "2017-09-18T08:39:46Z", "time": "2021-12-15T15:04:05Z",
+			"sha1": "", "complianceLevel": 0
+		})).unwrap();
+        let loader: LoaderVersion = serde_json::from_value(serde_json::json!({
+            "id": "test-loader", "stable": true, "url": "invalid://no-network"
+        }))
+        .unwrap();
+        let path = state
+            .directories
+            .version_dir("1.12.2-test-loader")
+            .join("1.12.2-test-loader.json");
+        for offline in [false, true] {
+            let mut info = version_info_with_java(None);
+            info.id = "1.12.2-test-loader".to_string();
+            write_version_info(&path, serde_json::to_vec(&info).unwrap())
+                .await
+                .unwrap();
+            if offline {
+                io::write(derived_version_cache_marker_path(&path), "3")
+                    .await
+                    .unwrap();
+            } else {
+                write_derived_version_cache_marker(&path).await.unwrap();
+            }
+            let mut loaded = if offline {
+                load_local_version_info(
+                    &state,
+                    &version,
+                    ModLoader::Forge,
+                    Some(&loader),
+                )
+                .await
+            } else {
+                download_version_info(
+                    &state,
+                    &version,
+                    ModLoader::Forge,
+                    Some(&loader),
+                    None,
+                    None,
+                    None,
+                )
+                .await
+            }
+            .unwrap();
+            assert_eq!(loaded.release_time, version.release_time);
+            assert_eq!(loaded.time, version.time);
+            let saved: GameVersionInfo =
+                serde_json::from_slice(&io::read(&path).await.unwrap())
+                    .unwrap();
+            assert_eq!(saved.release_time, version.release_time);
+            assert_eq!(saved.time, version.time);
+            assert!(!normalize_version_timestamps(&version, &mut loaded));
+            assert_eq!(derived_version_cache_is_current(&path).await, !offline);
+        }
+    }
+
+    #[test]
+    fn cleanroom_installer_declared_java_is_preserved() {
+        let mut info =
+            version_info_with_java(Some(d::minecraft::JavaVersion {
+                component: "java-runtime-epsilon".to_string(),
+                major_version: 25,
+            }));
+        assert!(!normalize_version_info(
+            ModLoader::Cleanroom,
+            "1.12.2",
+            &mut info,
+            "network",
+        ));
+        assert_eq!(
+            info.java_version.as_ref().map(|java| java.major_version),
+            Some(25)
+        );
+    }
+
+    #[test]
+    fn vanilla_stays_on_inherited_java_runtime() {
+        let mut info = version_info_with_java(None);
+        assert!(!normalize_version_info(
+            ModLoader::Vanilla,
+            "1.12.2",
+            &mut info,
+            "network",
+        ));
+        assert!(info.java_version.is_none());
+    }
+
+    #[test]
+    fn batch_assets_coalesce_duplicate_objects_and_keep_legacy_targets() {
+        let destination = PathBuf::from("assets/objects/ab/abcdef");
+        let first_legacy = PathBuf::from("resources/first");
+        let second_legacy = PathBuf::from("resources/second");
+        let make_item = |legacy_destinations| H2BatchAsset {
+            original_url: "https://resources.download.minecraft.net/ab/abcdef"
+                .into(),
+            url: "https://resources.download.minecraft.net/ab/abcdef".into(),
+            destination: destination.clone(),
+            legacy_destinations,
+            sha1: "abcdef".into(),
+            size: 42,
+            logical_items: 1,
+        };
+
+        let items = coalesce_batch_assets(vec![
+            make_item(vec![first_legacy.clone()]),
+            make_item(vec![second_legacy.clone(), first_legacy.clone()]),
+        ]);
+
+        assert_eq!(items.len(), 1);
+        assert_eq!(items[0].logical_items, 2);
+        assert_eq!(
+            items[0].legacy_destinations,
+            vec![first_legacy, second_legacy]
+        );
+    }
+
+    #[test]
+    fn batch_assets_do_not_coalesce_different_integrity_contracts() {
+        let destination = PathBuf::from("assets/objects/ab/object");
+        let make_item = |sha1: &str, size| H2BatchAsset {
+            original_url: format!(
+                "https://resources.download.minecraft.net/ab/{sha1}"
+            ),
+            url: format!("https://resources.download.minecraft.net/ab/{sha1}"),
+            destination: destination.clone(),
+            legacy_destinations: Vec::new(),
+            sha1: sha1.into(),
+            size,
+            logical_items: 1,
+        };
+
+        assert_eq!(
+            coalesce_batch_assets(vec![
+                make_item("first", 42),
+                make_item("second", 42),
+                make_item("first", 43),
+            ])
+            .len(),
+            3
+        );
+    }
+
+    #[test]
+    fn fallback_assets_coalesce_aliases_and_keep_legacy_targets() {
+        let destination = PathBuf::from("assets/objects/85/hash");
+        let first_legacy = PathBuf::from("resources/sound/liquid/splash2.ogg");
+        let second_legacy =
+            PathBuf::from("resources/sounds/liquid/splash2.ogg");
+        let make_item = |name: &str, legacy_resource_paths: Vec<PathBuf>| {
+            FallbackAsset {
+                name: name.into(),
+                hash: "857abbbfb58186c2f1b5510a4072630950e518f6".into(),
+                size: 36_747,
+            url: "https://resources.download.minecraft.net/85/857abbbfb58186c2f1b5510a4072630950e518f6".into(),
+            resource_path: destination.clone(),
+                legacy_resource_paths,
+                logical_items: 1,
+            }
+        };
+
+        let items = coalesce_fallback_assets(vec![
+            make_item("sound/liquid/splash2.ogg", vec![first_legacy.clone()]),
+            make_item(
+                "sounds/liquid/splash2.ogg",
+                vec![second_legacy.clone(), first_legacy.clone()],
+            ),
+        ]);
+
+        assert_eq!(items.len(), 1);
+        assert_eq!(items[0].logical_items, 2);
+        assert_eq!(
+            items[0].legacy_resource_paths,
+            vec![first_legacy, second_legacy]
+        );
+    }
+
+    #[test]
+    fn fallback_assets_do_not_coalesce_different_integrity_contracts() {
+        let destination = PathBuf::from("assets/objects/85/object");
+        let make_item = |hash: &str, size| FallbackAsset {
+            name: hash.into(),
+            hash: hash.into(),
+            size,
+            url: format!("https://resources.download.minecraft.net/85/{hash}"),
+            resource_path: destination.clone(),
+            legacy_resource_paths: Vec::new(),
+            logical_items: 1,
+        };
+
+        assert_eq!(
+            coalesce_fallback_assets(vec![
+                make_item("first", 42),
+                make_item("second", 42),
+                make_item("first", 43),
+            ])
+            .len(),
+            3
+        );
+    }
+
+    #[test]
+    fn batch_fallback_restores_official_asset_route_after_mirror_failure() {
+        let official = "https://resources.download.minecraft.net/14/14b3534e2622470a71dbe69474c15e6a233cc1c6";
+        let item = H2BatchAsset {
+            original_url: official.into(),
+            url: "https://bmclapi2.bangbang93.com/assets/14/14b3534e2622470a71dbe69474c15e6a233cc1c6"
+                .into(),
+            destination: PathBuf::from("assets/objects/14/hash"),
+            legacy_destinations: Vec::new(),
+            sha1: "14b3534e2622470a71dbe69474c15e6a233cc1c6".into(),
+            size: 42,
+            logical_items: 1,
+        };
+
+        let fallback = build_fallback_asset_from_batch(item);
+        let routes = resolve_download_routes_for(
+            &fallback.url,
+            ResourceClass::MinecraftAsset,
+            crate::state::DownloadSourceMode::MirrorPreferred,
+        );
+
+        assert_eq!(fallback.url, official);
+        assert!(routes.iter().any(|route| route.url == official));
+    }
+
     #[test]
     fn asset_fast_path_requires_a_regular_file_with_expected_size() {
         let directory = tempfile::tempdir().unwrap();
@@ -2405,6 +2989,45 @@ mod tests {
         );
     }
 
+    #[tokio::test]
+    async fn local_asset_availability_distinguishes_reusable_and_missing() {
+        let directory = tempfile::tempdir().unwrap();
+        let local_root = directory.path().join(".minecraft");
+        let relative = Path::new("assets/objects/ab/hash");
+        let candidate = local_root.join(relative);
+        io::create_dir_all(candidate.parent().unwrap())
+            .await
+            .unwrap();
+        io::write(&candidate, "asset").await.unwrap();
+        let source = LocalRuntimeSource { root: local_root };
+        let destination = directory.path().join("destination");
+
+        assert_eq!(
+            classify_local_artifact(
+                Some(&source),
+                &destination,
+                relative,
+                Some("0000000000000000000000000000000000000000"),
+                Some(5),
+            )
+            .await
+            .unwrap(),
+            ArtifactAvailability::NetworkRequired
+        );
+        assert_eq!(
+            classify_local_artifact(
+                Some(&source),
+                &destination,
+                relative,
+                Some("05fac94380a70241f23780e7aef62b190894238f"),
+                Some(5),
+            )
+            .await
+            .unwrap(),
+            ArtifactAvailability::LocalReusable
+        );
+    }
+
     #[test]
     fn liteloader_library_detection_is_coordinate_specific() {
         assert!(is_liteloader_library(
@@ -2425,12 +3048,21 @@ mod tests {
                 "linux": "natives-linux",
                 "osx": "natives-osx",
                 "windows": "natives-windows"
-            }
+            },
+            "checksums": ["05fac94380a70241f23780e7aef62b190894238f"]
         }))
         .unwrap();
 
         assert!(library.natives_os_key_and_classifiers("x86_64").is_none());
         let classifier = library_native_classifier(&library, "x86_64").unwrap();
+        assert_eq!(
+            legacy_library_sha1(&library),
+            Some("05fac94380a70241f23780e7aef62b190894238f")
+        );
+        assert_eq!(
+            legacy_library_content_validation("lwjgl-platform.jar"),
+            ContentValidation::Jar
+        );
         let artifact_path =
             classified_library_artifact_path(&library.name, &classifier)
                 .unwrap();
@@ -2447,6 +3079,110 @@ mod tests {
             )
             .unwrap()[0],
             format!("https://maven.legacyfabric.net/{artifact_path}")
+        );
+    }
+
+    #[test]
+    fn native_library_with_legacy_repository_keeps_java_artifact_task() {
+        let library: Library = serde_json::from_value(serde_json::json!({
+            "name": "org.lwjgl.lwjgl:lwjgl-platform:2.9.4",
+            "url": "https://libraries.minecraft.net/",
+            "natives": {
+                "windows": "natives-windows"
+            }
+        }))
+        .unwrap();
+
+        assert!(needs_java_artifact(&library));
+    }
+
+    #[test]
+    fn processor_dependency_without_classpath_flag_keeps_java_artifact_task() {
+        let library: Library = serde_json::from_value(serde_json::json!({
+            "name": "net.neoforged.installertools:installertools:2.1.2",
+            "downloads": {"artifact": {
+                "url": "https://maven.neoforged.net/releases/net/neoforged/installertools/installertools/2.1.2/installertools-2.1.2.jar",
+                "sha1": "", "size": 1
+            }},
+            "include_in_classpath": false,
+            "downloadable": true
+        }))
+        .unwrap();
+
+        assert!(needs_java_artifact(&library));
+        assert!(java_artifact_applies(&library, "x86_64", true));
+    }
+
+    #[test]
+    fn legacy_launchwrapper_without_download_metadata_is_downloaded() {
+        let library: Library = serde_json::from_value(serde_json::json!({
+            "name": "net.minecraft:launchwrapper:1.12"
+        }))
+        .unwrap();
+
+        let artifact_path = d::get_path_from_artifact(&library.name).unwrap();
+        assert!(needs_java_artifact(&library));
+        assert_eq!(
+            legacy_library_download_urls(
+                library.url.as_deref(),
+                &artifact_path
+            )
+            .unwrap(),
+            vec![format!("{LIBRARIES_MAVEN}/{artifact_path}")]
+        );
+    }
+
+    #[test]
+    fn java_artifact_rules_are_applied_before_path_deduplication() {
+        let blocked: Library = serde_json::from_value(serde_json::json!({
+            "name": "example:library:1.0",
+            "rules": [{"action": "allow", "features": {"is_demo_user": true}}],
+            "downloads": {"artifact": {
+                "url": "https://example.invalid/library.jar",
+                "sha1": "", "size": 1
+            }}
+        }))
+        .unwrap();
+        let allowed: Library = serde_json::from_value(serde_json::json!({
+            "name": "example:library:1.0",
+            "downloads": {"artifact": {
+                "url": "https://example.invalid/library.jar",
+                "sha1": "", "size": 1
+            }}
+        }))
+        .unwrap();
+
+        assert!(!java_artifact_applies(&blocked, "x86_64", true));
+        assert!(java_artifact_applies(&allowed, "x86_64", true));
+    }
+
+    #[test]
+    fn empty_legacy_repository_is_not_a_java_artifact_source() {
+        let library: Library = serde_json::from_value(serde_json::json!({
+            "name": "example:native:1.0",
+            "url": "",
+            "natives": {"windows": "natives-windows"}
+        }))
+        .unwrap();
+
+        assert!(!needs_java_artifact(&library));
+    }
+
+    #[test]
+    fn forge_classifier_native_library_uses_its_declared_artifact_path() {
+        let library: Library = serde_json::from_value(serde_json::json!({
+            "name": "org.lwjgl:lwjgl:3.2.2:natives-windows"
+        }))
+        .unwrap();
+
+        assert!(is_native_library(&library));
+        assert_eq!(
+            library_native_classifier(&library, "x86_64"),
+            Some("natives-windows".to_string())
+        );
+        assert_eq!(
+            native_library_artifact_path(&library, "natives-windows").unwrap(),
+            "org/lwjgl/lwjgl/3.2.2/lwjgl-3.2.2-natives-windows.jar"
         );
     }
 
@@ -2475,7 +3211,7 @@ mod tests {
         write_version_info(&path, b"{}".to_vec()).await.unwrap();
 
         assert!(!derived_version_cache_is_current(&path).await);
-        io::write(derived_version_cache_marker_path(&path), "0")
+        io::write(derived_version_cache_marker_path(&path), "3")
             .await
             .unwrap();
         assert!(!derived_version_cache_is_current(&path).await);
@@ -2686,7 +3422,7 @@ mod tests {
         let options = zip::write::SimpleFileOptions::default()
             .compression_method(zip::CompressionMethod::Stored);
         for (name, contents) in entries {
-            writer.start_file(*name, options.clone()).unwrap();
+            writer.start_file(*name, options).unwrap();
             writer.write_all(contents).unwrap();
         }
         writer.finish().unwrap();

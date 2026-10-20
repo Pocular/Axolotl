@@ -9,7 +9,8 @@ use url::Url;
 
 use super::{
     SingleplayerGameMode, get_world_dir, get_world_session_lock,
-    resolve_instance_identity, try_get_world_session_lock,
+    resolve_instance_data_dir, resolve_instance_identity,
+    try_get_world_session_lock,
 };
 use crate::util::io;
 use crate::{Error, ErrorKind, Result, State};
@@ -465,12 +466,16 @@ pub async fn get_world_level_data(
     world: &str,
 ) -> Result<WorldLevelData> {
     let state = State::get().await?;
-    let (_, instance_path, game_dir_override) =
+    let (instance_id, instance_path, game_dir_override) =
         resolve_instance_identity(instance, &state).await?;
-    let instance_dir = state
-        .directories
-        .resolve_game_dir(&instance_path, game_dir_override.as_deref());
-    let world_dir = get_world_dir(&instance_dir, world);
+    let instance_dir = resolve_instance_data_dir(
+        &instance_id,
+        &instance_path,
+        game_dir_override.as_deref(),
+        &state,
+    )
+    .await?;
+    let world_dir = get_world_dir(&instance_dir, world)?;
 
     let locked = try_get_world_session_lock(&world_dir).await?.is_none();
 
@@ -600,7 +605,7 @@ pub async fn update_world_settings(
     world: &str,
     patch: WorldSettingsPatch,
 ) -> Result<()> {
-    let world_dir = get_world_dir(instance, world);
+    let world_dir = get_world_dir(instance, world)?;
     let level_dat_path = world_dir.join("level.dat");
     if !level_dat_path.exists() {
         return Err(ErrorKind::InputError(

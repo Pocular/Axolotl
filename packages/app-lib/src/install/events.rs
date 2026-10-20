@@ -7,18 +7,19 @@ use super::model::{
 };
 use super::store;
 use chrono::Utc;
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, LazyLock, Weak};
 use std::time::{Duration, Instant};
 use tokio::sync::Mutex;
 use tokio_util::sync::CancellationToken;
 use uuid::Uuid;
 
-const PROGRESS_PERSIST_INTERVAL: Duration = Duration::from_millis(500);
-const CONTENT_PROGRESS_PERSIST_STEPS: u64 = 25;
-const LIVE_PROGRESS_EMIT_INTERVAL: Duration = Duration::from_millis(250);
-const LIVE_PROGRESS_PERSIST_INTERVAL: Duration = Duration::from_secs(3);
-const LIVE_PROGRESS_MIN_BYTES: u64 = 256 * 1024;
+// Keep per-file progress responsive without emitting every network chunk.
+const LIVE_PROGRESS_EMIT_INTERVAL: Duration = Duration::from_millis(100);
+const LIVE_PROGRESS_MAX_WAIT: Duration = Duration::from_secs(1);
+const LIVE_PROGRESS_MIN_BYTES: u64 = 64 * 1024;
+const CONTENT_CHECKPOINT_FILE_COUNT: usize = 25;
+const CONTENT_CHECKPOINT_INTERVAL: Duration = Duration::from_secs(2);
 
 static REPORTER_STATES: LazyLock<
     dashmap::DashMap<Uuid, Weak<Mutex<InstallProgressReporterState>>>,
@@ -33,17 +34,28 @@ pub struct InstallProgressReporter {
     /// the modpack installer to report the concurrent Minecraft core download
     /// while content installation remains the main phase.
     parallel_output: bool,
+    /// Provider-specific content installers report their own phases and
+    /// counters. Batch runners disable those updates so concurrent actions
+    /// cannot overwrite the job-level aggregate, while download events and
+    /// request progress continue to use the shared state.
+    phase_updates_enabled: bool,
 }
 
 #[derive(Debug)]
 struct InstallProgressReporterState {
     job: InstallJobState,
+    last_snapshot: Option<InstallJobSnapshot>,
     last_persisted_at: Instant,
     last_persisted_progress: Option<(InstallPhaseId, u64)>,
+    settled_files_since_checkpoint: usize,
+    checkpoint_scheduled: bool,
+    checkpoint_in_flight: bool,
     initialized_from_store: bool,
+    parallel_is_foreground: bool,
     postponed_java_versions: HashSet<u32>,
-    last_live_emit_at: Instant,
-    last_live_persist_at: Instant,
+    /// Per-download event throttles. A global throttle makes one busy file
+    /// suppress progress events for every other active download.
+    last_live_emit_at: HashMap<String, Instant>,
     /// Paths with a pending stalled-download check task, so at most one
     /// delayed check is scheduled per active download at a time.
     pending_stall_checks: HashSet<String>,
@@ -94,11 +106,35 @@ impl InstallProgressReporter {
                     .get(&self.job_id)
                     .map(|entry| entry.value().clone())
             })
-            .unwrap_or_else(CancellationToken::new)
+            .unwrap_or_default()
     }
 
     pub(crate) fn job_id(&self) -> Uuid {
         self.job_id
+    }
+
+    /// Overlays the in-memory reporter state on a database snapshot. Progress
+    /// and active download details are intentionally runtime state and can be
+    /// newer than the last checkpoint written to SQLite.
+    pub(crate) async fn overlay_snapshot(
+        job_id: Uuid,
+        mut snapshot: InstallJobSnapshot,
+    ) -> Option<InstallJobSnapshot> {
+        let state = REPORTER_STATES.get(&job_id)?.upgrade()?;
+        let state = state.lock().await;
+        snapshot.phase = state.job.progress.phase;
+        snapshot.progress = state.job.progress.progress.clone();
+        snapshot.details = state.job.progress.details.clone();
+        snapshot.parallel = state.job.progress.parallel.clone();
+        snapshot.display = state.job.display.clone();
+        snapshot.error = state.job.error.clone();
+        snapshot.rollback_error = state.job.rollback_error.clone();
+        snapshot.pause_reason = state.job.pause_reason.clone();
+        snapshot.upgrade_result = state.job.upgrade_result.clone();
+        snapshot.content_change = state.job.content_change();
+        snapshot.summary = state.job.download_summary();
+        snapshot.items = state.job.download_items();
+        Some(snapshot)
     }
 
     pub fn new(job_id: Uuid, mut state: InstallJobState) -> Self {
@@ -111,12 +147,16 @@ impl InstallProgressReporter {
                     let state =
                         Arc::new(Mutex::new(InstallProgressReporterState {
                             job: state,
+                            last_snapshot: None,
                             last_persisted_at: Instant::now(),
                             last_persisted_progress: None,
+                            settled_files_since_checkpoint: 0,
+                            checkpoint_scheduled: false,
+                            checkpoint_in_flight: false,
                             initialized_from_store: false,
+                            parallel_is_foreground: false,
                             postponed_java_versions: HashSet::new(),
-                            last_live_emit_at: Instant::now(),
-                            last_live_persist_at: Instant::now(),
+                            last_live_emit_at: HashMap::new(),
                             pending_stall_checks: HashSet::new(),
                         }));
                     entry.insert(Arc::downgrade(&state));
@@ -127,12 +167,16 @@ impl InstallProgressReporter {
                 let state =
                     Arc::new(Mutex::new(InstallProgressReporterState {
                         job: state,
+                        last_snapshot: None,
                         last_persisted_at: Instant::now(),
                         last_persisted_progress: None,
+                        settled_files_since_checkpoint: 0,
+                        checkpoint_scheduled: false,
+                        checkpoint_in_flight: false,
                         initialized_from_store: false,
+                        parallel_is_foreground: false,
                         postponed_java_versions: HashSet::new(),
-                        last_live_emit_at: Instant::now(),
-                        last_live_persist_at: Instant::now(),
+                        last_live_emit_at: HashMap::new(),
                         pending_stall_checks: HashSet::new(),
                     }));
                 entry.insert(Arc::downgrade(&state));
@@ -143,6 +187,7 @@ impl InstallProgressReporter {
             job_id,
             state: shared_state,
             parallel_output: false,
+            phase_updates_enabled: true,
         }
     }
 
@@ -154,12 +199,40 @@ impl InstallProgressReporter {
         self
     }
 
+    /// Makes the remaining core installation visible after pack content finishes.
+    pub(crate) async fn foreground_parallel_output(&self) -> crate::Result<()> {
+        let mut state = self.state.lock().await;
+        state.parallel_is_foreground = true;
+        if state.job.progress.parallel.is_none() {
+            state.job.set_progress(
+                InstallPhaseId::ResolvingMinecraft,
+                None,
+                InstallPhaseDetails::Empty,
+            );
+        }
+        state.foreground_parallel_progress();
+        let snapshot = runtime_snapshot(&state);
+        drop(state);
+        if let Some(snapshot) = snapshot {
+            emit_install_job(&snapshot).await?;
+        }
+        Ok(())
+    }
+
+    pub(crate) fn without_phase_updates(mut self) -> Self {
+        self.phase_updates_enabled = false;
+        self
+    }
+
     pub async fn update(
         &self,
         phase: InstallPhaseId,
         progress: Option<InstallProgress>,
         details: InstallPhaseDetails,
     ) -> crate::Result<()> {
+        if !self.phase_updates_enabled {
+            return Ok(());
+        }
         if self.parallel_output {
             self.update_parallel(phase, progress, details).await
         } else {
@@ -208,62 +281,20 @@ impl InstallProgressReporter {
                 .map(|parallel| (parallel.current, parallel.total))
                 .unwrap_or((0, 0)),
         };
-        let previous = &state.job.progress.parallel;
-        let phase_changed = previous
-            .as_ref()
-            .is_none_or(|parallel| parallel.phase != phase);
-        let total_changed = previous
-            .as_ref()
-            .is_none_or(|parallel| parallel.total != total);
-        let enough_progress = previous
-            .as_ref()
-            .map(|parallel| {
-                current.saturating_sub(parallel.current)
-                    >= (parallel.total / 200)
-                        .max(CONTENT_PROGRESS_PERSIST_STEPS)
-            })
-            .unwrap_or(true);
         state.job.progress.parallel = Some(InstallParallelProgress {
             phase,
             current,
             total,
             details,
         });
-        if !(phase_changed || total_changed || enough_progress)
-            && state.last_persisted_at.elapsed() < PROGRESS_PERSIST_INTERVAL
-        {
+        if state.parallel_is_foreground {
+            state.foreground_parallel_progress();
+        }
+        let Some(snapshot) = runtime_snapshot(&state) else {
             return Ok(());
-        }
-
-        let json = serde_json::to_string(&state.job)?;
-        let provider = state.job.provider().as_str().to_string();
-        let summary = state.job.download_summary();
+        };
         drop(state);
-        let record = match store::update_progress_state(
-            self.job_id,
-            &json,
-            &provider,
-            &summary,
-            &app_state,
-        )
-        .await
-        {
-            Ok(()) => store::get_required(self.job_id, &app_state).await,
-            Err(error) => Err(error),
-        };
-        let record = match record {
-            Ok(record) => record,
-            Err(error) => {
-                tracing::warn!(%error, "Failed to persist parallel install progress");
-                return Ok(());
-            }
-        };
-        if let Ok(mut state) = self.state.try_lock() {
-            state.mark_persisted();
-        }
-        if let Err(error) = emit_install_job(&record.snapshot()).await {
-            tracing::warn!(%error, "Failed to emit parallel install progress");
-        }
+        emit_install_job(&snapshot).await?;
         Ok(())
     }
 
@@ -307,8 +338,9 @@ impl InstallProgressReporter {
         app_state: &crate::State,
     ) -> crate::Result<()> {
         if !state.initialized_from_store {
-            state.job =
-                store::get_required(self.job_id, app_state).await?.state;
+            let record = store::get_required(self.job_id, app_state).await?;
+            state.job = record.state.clone();
+            state.last_snapshot = Some(record.snapshot());
             state.job.compact_transient_download_events();
             state.initialized_from_store = true;
         }
@@ -348,7 +380,7 @@ impl InstallProgressReporter {
                 return Ok(());
             }
         };
-        state.mark_persisted();
+        state.mark_persisted(record.snapshot());
         if let Err(error) = emit_install_job(&record.snapshot()).await {
             tracing::warn!(%error, "Failed to emit install context");
         }
@@ -362,7 +394,7 @@ impl InstallProgressReporter {
 
         let record =
             store::update_state(self.job_id, &state.job, &app_state).await?;
-        state.mark_persisted();
+        state.mark_persisted(record.snapshot());
         let snapshot = record.snapshot();
         emit_install_job(&snapshot).await?;
         Ok(snapshot)
@@ -385,7 +417,7 @@ impl InstallProgressReporter {
         state.job.continuation = continuation;
         let record =
             store::update_state(self.job_id, &state.job, &app_state).await?;
-        state.mark_persisted();
+        state.mark_persisted(record.snapshot());
         emit_install_job(&record.snapshot()).await
     }
 
@@ -399,7 +431,7 @@ impl InstallProgressReporter {
         state.job.missing_content = missing_content;
         let record =
             store::update_state(self.job_id, &state.job, &app_state).await?;
-        state.mark_persisted();
+        state.mark_persisted(record.snapshot());
         emit_install_job(&record.snapshot()).await
     }
 
@@ -413,7 +445,7 @@ impl InstallProgressReporter {
         state.job.upgrade_result = Some(result);
         let record =
             store::update_state(self.job_id, &state.job, &app_state).await?;
-        state.mark_persisted();
+        state.mark_persisted(record.snapshot());
         emit_install_job(&record.snapshot()).await
     }
 
@@ -437,24 +469,13 @@ impl InstallProgressReporter {
         if refresh_missing_reason {
             refresh_missing_pause_reason(&mut state.job);
         }
-        // Serialize under the lock; the DB write runs without holding the
-        // reporter mutex so per-file completion events never serialize on it.
-        let json = serde_json::to_string(&state.job)?;
-        let provider = state.job.provider().as_str().to_string();
-        let summary = state.job.download_summary();
+        let Some(snapshot) = runtime_snapshot(&state) else {
+            return Err(crate::ErrorKind::OtherError(
+                "install progress snapshot unavailable".to_string(),
+            )
+            .into());
+        };
         drop(state);
-        let record = store::update_state_with_progress_columns(
-            self.job_id,
-            &json,
-            &provider,
-            &summary,
-            &app_state,
-        )
-        .await?;
-        if let Ok(mut state) = self.state.try_lock() {
-            state.mark_persisted();
-        }
-        let snapshot = record.snapshot();
         emit_install_job(&snapshot).await?;
         Ok(snapshot)
     }
@@ -469,7 +490,7 @@ impl InstallProgressReporter {
         state.job.rollback = rollback;
         let record =
             store::update_state(self.job_id, &state.job, &app_state).await?;
-        state.mark_persisted();
+        state.mark_persisted(record.snapshot());
         emit_install_job(&record.snapshot()).await
     }
 
@@ -497,7 +518,7 @@ impl InstallProgressReporter {
         snapshot.replacement_paths.sort();
         let record =
             store::update_state(self.job_id, &state.job, &app_state).await?;
-        state.mark_persisted();
+        state.mark_persisted(record.snapshot());
         emit_install_job(&record.snapshot()).await
     }
 
@@ -516,6 +537,7 @@ impl InstallProgressReporter {
     ) -> crate::Result<()> {
         let app_state = crate::State::get().await?;
         let mut state = self.state.lock().await;
+        self.sync_latest(&mut state, &app_state).await?;
 
         state
             .job
@@ -523,22 +545,9 @@ impl InstallProgressReporter {
                 source: source.into(),
                 fallback_count,
             });
-        let record = match store::update_state(
-            self.job_id,
-            &state.job,
-            &app_state,
-        )
-        .await
-        {
-            Ok(record) => record,
-            Err(error) => {
-                tracing::warn!(%error, "Failed to persist download metrics");
-                return Ok(());
-            }
-        };
-        state.mark_persisted();
-        if let Err(error) = emit_install_job(&record.snapshot()).await {
-            tracing::warn!(%error, "Failed to emit download metrics");
+        if let Some(snapshot) = runtime_snapshot(&state) {
+            drop(state);
+            emit_install_job(&snapshot).await?;
         }
         Ok(())
     }
@@ -588,12 +597,20 @@ impl InstallProgressReporter {
         bytes_total: u64,
     ) -> crate::Result<()> {
         let path = path.into();
-        let app_state = crate::State::get().await?;
-        let mut state = self.state.lock().await;
-        self.sync_latest(&mut state, &app_state).await?;
+        // Progress reporting runs in the socket read path. Never make network
+        // workers wait for another file's reporter update; a later sample
+        // carries the cumulative byte count and catches the UI up.
+        let Ok(mut state) = self.state.try_lock() else {
+            return Ok(());
+        };
+        if !state.initialized_from_store {
+            return Ok(());
+        }
         let now = Utc::now();
-        let emit_too_soon =
-            state.last_live_emit_at.elapsed() < LIVE_PROGRESS_EMIT_INTERVAL;
+        let since_last_emit = state
+            .last_live_emit_at
+            .get(&path)
+            .map_or(LIVE_PROGRESS_MAX_WAIT, Instant::elapsed);
         let Some(active) = state.job.active_downloads.get_mut(&path) else {
             return Ok(());
         };
@@ -614,17 +631,7 @@ impl InstallProgressReporter {
                     .saturating_mul(1_000)
                     .checked_div(sample_elapsed_ms)
                     .unwrap_or(0);
-                let new_speed = match active.speed_bytes_per_second {
-                    Some(previous) if sample > previous => {
-                        previous + (((sample - previous) as f64) * 0.5) as u64
-                    }
-                    Some(previous) => {
-                        (((previous as f64) * 0.95) + ((sample as f64) * 0.05))
-                            as u64
-                    }
-                    None => sample,
-                };
-                active.speed_bytes_per_second = Some(new_speed);
+                active.speed_bytes_per_second = Some(sample);
                 active.speed_sample_started_at = now;
                 active.speed_sample_started_bytes = bytes;
             }
@@ -634,46 +641,19 @@ impl InstallProgressReporter {
         active.status = DownloadItemStatus::Downloading;
 
         let threshold = LIVE_PROGRESS_MIN_BYTES.max(bytes_total / 200);
-        if bytes.saturating_sub(active.last_reported_bytes) < threshold
-            || emit_too_soon
+        if since_last_emit < LIVE_PROGRESS_EMIT_INTERVAL
+            || (bytes.saturating_sub(active.last_reported_bytes) < threshold
+                && since_last_emit < LIVE_PROGRESS_MAX_WAIT)
         {
             return Ok(());
         }
         active.last_reported_bytes = bytes;
-        state.last_live_emit_at = Instant::now();
+        state.last_live_emit_at.insert(path.clone(), Instant::now());
         let (speed_bytes_per_second, eta_seconds) =
             live_download_metrics(&state.job);
-        let should_persist = state.last_live_persist_at.elapsed()
-            >= LIVE_PROGRESS_PERSIST_INTERVAL;
         let schedule_stall_check =
             state.pending_stall_checks.insert(path.clone());
-        // Serialize and summarize under the lock (CPU only); the DB write
-        // below runs without holding the reporter mutex so progress
-        // callbacks from other files never block on the transaction.
-        let persisted = if should_persist {
-            state.last_live_persist_at = Instant::now();
-            Some((
-                serde_json::to_string(&state.job)?,
-                state.job.provider().as_str().to_string(),
-                state.job.download_summary(),
-            ))
-        } else {
-            None
-        };
         drop(state);
-        if let Some((json, provider, summary)) = persisted {
-            if let Err(error) = store::update_progress_state(
-                self.job_id,
-                &json,
-                &provider,
-                &summary,
-                &app_state,
-            )
-            .await
-            {
-                tracing::warn!(%error, "Failed to persist live download progress");
-            }
-        }
         emit_download_request_update(&DownloadRequestUpdate::Progress {
             job_id: self.job_id,
             id: path.clone(),
@@ -718,7 +698,7 @@ impl InstallProgressReporter {
         let bytes = active.bytes_downloaded;
         let (speed_bytes_per_second, eta_seconds) =
             live_download_metrics(&state.job);
-        state.last_live_emit_at = Instant::now();
+        state.last_live_emit_at.insert(path.clone(), Instant::now());
         drop(state);
         emit_download_request_update(&DownloadRequestUpdate::Progress {
             job_id: self.job_id,
@@ -839,6 +819,7 @@ impl InstallProgressReporter {
             InstallJobEventKind::DownloadRequestFinished { path, .. }
             | InstallJobEventKind::DownloadRequestFailed { path } => {
                 state.job.active_downloads.remove(path);
+                state.last_live_emit_at.remove(path);
             }
             _ => {}
         }
@@ -879,59 +860,151 @@ impl InstallProgressReporter {
             tracing::warn!(%error, "Failed to load install progress state");
             return Ok(());
         }
-        let phase_started = state.job.progress.phase != phase
-            || matches!(
-                &state.job.progress.details,
-                InstallPhaseDetails::Empty
-            ) && !matches!(&details, InstallPhaseDetails::Empty);
-        let progress_counter_started = state.job.progress.phase == phase
-            && match (&state.job.progress.progress, &progress) {
-                (None, Some(_)) => true,
-                (Some(old), Some(new)) => old.total != new.total,
-                _ => false,
-            };
-        state.job.set_progress(phase, progress, details);
+        let settled_files = events
+            .iter()
+            .filter(|event| is_content_settlement_event(event))
+            .count();
+        if self.phase_updates_enabled {
+            state.job.set_progress(phase, progress, details);
+        }
         for event in events {
             state.job.record_event(event);
         }
+        state.settled_files_since_checkpoint = state
+            .settled_files_since_checkpoint
+            .saturating_add(settled_files);
 
-        if !state.should_persist(phase_started || progress_counter_started) {
+        let checkpoint_due = !state.checkpoint_in_flight
+            && state.settled_files_since_checkpoint > 0
+            && (state.settled_files_since_checkpoint
+                >= CONTENT_CHECKPOINT_FILE_COUNT
+                || state.last_persisted_at.elapsed()
+                    >= CONTENT_CHECKPOINT_INTERVAL);
+        let checkpoint = checkpoint_due.then(|| {
+            state.checkpoint_in_flight = true;
+            (state.job.clone(), state.settled_files_since_checkpoint)
+        });
+        let checkpoint_delay = state.schedule_checkpoint_if_needed();
+
+        let Some(snapshot) = runtime_snapshot(&state) else {
             return Ok(());
-        }
-
-        // Serialize and summarize under the lock (CPU only); the DB write
-        // below runs without holding the reporter mutex.
-        let json = serde_json::to_string(&state.job)?;
-        let provider = state.job.provider().as_str().to_string();
-        let summary = state.job.download_summary();
+        };
         drop(state);
-        let record = match store::update_progress_state(
-            self.job_id,
-            &json,
-            &provider,
-            &summary,
-            &app_state,
-        )
-        .await
-        {
-            Ok(()) => store::get_required(self.job_id, &app_state).await,
-            Err(error) => Err(error),
-        };
-        let record = match record {
-            Ok(record) => record,
-            Err(error) => {
-                tracing::warn!(%error, "Failed to persist install progress");
-                return Ok(());
-            }
-        };
-        if let Ok(mut state) = self.state.try_lock() {
-            state.mark_persisted();
+        emit_install_job(&snapshot).await?;
+        if let Some(delay) = checkpoint_delay {
+            self.schedule_content_checkpoint(delay);
         }
-        if let Err(error) = emit_install_job(&record.snapshot()).await {
-            tracing::warn!(%error, "Failed to emit install progress");
+        if let Some((checkpoint_state, settled_files)) = checkpoint {
+            self.persist_content_checkpoint(
+                &app_state,
+                checkpoint_state,
+                settled_files,
+            )
+            .await?;
         }
         Ok(())
     }
+
+    async fn flush_content_checkpoint(&self) -> crate::Result<()> {
+        let app_state = crate::State::get().await?;
+        let mut state = self.state.lock().await;
+        self.sync_latest(&mut state, &app_state).await?;
+        state.checkpoint_scheduled = false;
+        if state.settled_files_since_checkpoint == 0
+            || state.checkpoint_in_flight
+        {
+            return Ok(());
+        }
+        state.checkpoint_in_flight = true;
+        let checkpoint_state = state.job.clone();
+        let settled_files = state.settled_files_since_checkpoint;
+        drop(state);
+        self.persist_content_checkpoint(
+            &app_state,
+            checkpoint_state,
+            settled_files,
+        )
+        .await
+    }
+
+    async fn persist_content_checkpoint(
+        &self,
+        app_state: &crate::State,
+        checkpoint_state: InstallJobState,
+        settled_files: usize,
+    ) -> crate::Result<()> {
+        // Do not hold the reporter mutex while SQLite is busy. Download
+        // started/finished events can continue to mutate the runtime state and
+        // release their network slots while this snapshot waits to persist.
+        let persisted = store::checkpoint_running_state(
+            self.job_id,
+            &checkpoint_state,
+            app_state,
+        )
+        .await;
+        let mut state = self.state.lock().await;
+        state.checkpoint_in_flight = false;
+        match persisted {
+            Ok(Some(record)) => {
+                state.last_snapshot = Some(record.snapshot());
+                state.mark_checkpoint_persisted(settled_files);
+            }
+            Ok(None) => {
+                // Job finalization or pause won the database race. Never let a
+                // delayed runtime checkpoint overwrite that authoritative
+                // terminal state.
+                state.settled_files_since_checkpoint = 0;
+                state.checkpoint_scheduled = false;
+            }
+            Err(error) => {
+                let retry_delay = state.schedule_checkpoint_if_needed();
+                drop(state);
+                if let Some(delay) = retry_delay {
+                    self.schedule_content_checkpoint(delay);
+                }
+                return Err(error);
+            }
+        }
+        let next_delay = state.schedule_checkpoint_if_needed();
+        drop(state);
+        if let Some(delay) = next_delay {
+            self.schedule_content_checkpoint(delay);
+        }
+        Ok(())
+    }
+
+    fn schedule_content_checkpoint(&self, delay: Duration) {
+        let reporter = self.clone();
+        tokio::spawn(async move {
+            tokio::time::sleep(delay).await;
+            if let Err(error) = reporter.flush_content_checkpoint().await {
+                tracing::warn!(
+                    job_id = %reporter.job_id,
+                    %error,
+                    "Failed to flush install content checkpoint"
+                );
+            }
+        });
+    }
+}
+
+fn runtime_snapshot(
+    state: &InstallProgressReporterState,
+) -> Option<InstallJobSnapshot> {
+    let mut snapshot = state.last_snapshot.clone()?;
+    snapshot.phase = state.job.progress.phase;
+    snapshot.progress = state.job.progress.progress.clone();
+    snapshot.details = state.job.progress.details.clone();
+    snapshot.parallel = state.job.progress.parallel.clone();
+    snapshot.display = state.job.display.clone();
+    snapshot.error = state.job.error.clone();
+    snapshot.rollback_error = state.job.rollback_error.clone();
+    snapshot.pause_reason = state.job.pause_reason.clone();
+    snapshot.upgrade_result = state.job.upgrade_result.clone();
+    snapshot.content_change = state.job.content_change();
+    snapshot.summary = state.job.download_summary();
+    snapshot.items = state.job.download_items();
+    Some(snapshot)
 }
 
 fn refresh_missing_pause_reason(job: &mut InstallJobState) {
@@ -977,38 +1050,24 @@ fn refresh_missing_pause_reason(job: &mut InstallJobState) {
 }
 
 impl InstallProgressReporterState {
-    fn should_persist(&self, state_transition: bool) -> bool {
-        if state_transition {
-            return true;
+    fn foreground_parallel_progress(&mut self) {
+        if let Some(parallel) = self.job.progress.parallel.take() {
+            self.job.set_progress(
+                parallel.phase,
+                (parallel.total > 0).then_some(InstallProgress {
+                    current: parallel.current,
+                    total: parallel.total,
+                    secondary: None,
+                }),
+                parallel.details,
+            );
         }
-
-        let Some(progress) = &self.job.progress.progress else {
-            return true;
-        };
-
-        if progress.current >= progress.total {
-            return true;
-        }
-
-        let progressed_enough =
-            if self.job.progress.phase == InstallPhaseId::DownloadingContent {
-                self.last_persisted_progress
-                    .map(|(phase, current)| {
-                        phase != self.job.progress.phase
-                            || progress.current.saturating_sub(current)
-                                >= CONTENT_PROGRESS_PERSIST_STEPS
-                    })
-                    .unwrap_or(true)
-            } else {
-                false
-            };
-
-        progressed_enough
-            || self.last_persisted_at.elapsed() >= PROGRESS_PERSIST_INTERVAL
     }
 
-    fn mark_persisted(&mut self) {
+    fn mark_persisted(&mut self, snapshot: InstallJobSnapshot) {
+        self.last_snapshot = Some(snapshot);
         self.last_persisted_at = Instant::now();
+        self.settled_files_since_checkpoint = 0;
         self.last_persisted_progress = self
             .job
             .progress
@@ -1016,6 +1075,43 @@ impl InstallProgressReporterState {
             .as_ref()
             .map(|progress| (self.job.progress.phase, progress.current));
     }
+
+    fn mark_checkpoint_persisted(&mut self, settled_files: usize) {
+        self.last_persisted_at = Instant::now();
+        self.settled_files_since_checkpoint = self
+            .settled_files_since_checkpoint
+            .saturating_sub(settled_files);
+        self.last_persisted_progress = self
+            .job
+            .progress
+            .progress
+            .as_ref()
+            .map(|progress| (self.job.progress.phase, progress.current));
+    }
+
+    fn schedule_checkpoint_if_needed(&mut self) -> Option<Duration> {
+        if self.settled_files_since_checkpoint == 0
+            || self.checkpoint_scheduled
+            || self.checkpoint_in_flight
+        {
+            return None;
+        }
+        self.checkpoint_scheduled = true;
+        Some(
+            CONTENT_CHECKPOINT_INTERVAL
+                .saturating_sub(self.last_persisted_at.elapsed()),
+        )
+    }
+}
+
+fn is_content_settlement_event(event: &InstallJobEventKind) -> bool {
+    matches!(
+        event,
+        InstallJobEventKind::ContentFileCompleted { .. }
+            | InstallJobEventKind::ContentFileRecovered { .. }
+            | InstallJobEventKind::ContentFileSkipped { .. }
+            | InstallJobEventKind::ContentFileFailed { .. }
+    )
 }
 
 fn live_download_metrics(job: &InstallJobState) -> (Option<u64>, Option<u64>) {
@@ -1146,6 +1242,108 @@ mod tests {
         assert!(Arc::ptr_eq(&first.state, &second.state));
     }
 
+    #[cfg(not(feature = "tauri"))]
+    #[tokio::test]
+    async fn remaining_minecraft_work_before_first_parallel_update() {
+        let (_, _, reporter) = stored_minecraft_progress_job(0, 100).await;
+        reporter
+            .update(
+                InstallPhaseId::ExtractingOverrides,
+                None,
+                InstallPhaseDetails::Empty,
+            )
+            .await
+            .unwrap();
+        reporter.foreground_parallel_output().await.unwrap();
+        assert_eq!(
+            reporter.state.lock().await.job.progress.phase,
+            InstallPhaseId::ResolvingMinecraft
+        );
+        reporter
+            .clone()
+            .with_parallel_output()
+            .update(
+                InstallPhaseId::DownloadingMinecraft,
+                Some(minecraft_progress(25, 100)),
+                minecraft_details(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(
+            reporter.state.lock().await.job.progress.phase,
+            InstallPhaseId::DownloadingMinecraft
+        );
+    }
+
+    #[cfg(not(feature = "tauri"))]
+    #[tokio::test]
+    async fn remaining_minecraft_work_replaces_completed_extraction_phase() {
+        let (_, _, reporter) = stored_minecraft_progress_job(0, 100).await;
+        let parallel = reporter.clone().with_parallel_output();
+        reporter
+            .update(
+                InstallPhaseId::ExtractingOverrides,
+                Some(minecraft_progress(100, 100)),
+                InstallPhaseDetails::Empty,
+            )
+            .await
+            .unwrap();
+        parallel
+            .update(
+                InstallPhaseId::DownloadingMinecraft,
+                Some(minecraft_progress(25, 100)),
+                minecraft_details(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(
+            reporter.state.lock().await.job.progress.phase,
+            InstallPhaseId::ExtractingOverrides
+        );
+        reporter.foreground_parallel_output().await.unwrap();
+        {
+            let state = reporter.state.lock().await;
+            assert_eq!(
+                state.job.progress.phase,
+                InstallPhaseId::DownloadingMinecraft
+            );
+            assert_eq!(
+                state.job.progress.progress.as_ref().unwrap().current,
+                25
+            );
+            assert!(state.job.progress.parallel.is_none());
+        }
+        parallel
+            .update(
+                InstallPhaseId::DownloadingMinecraft,
+                Some(minecraft_progress(75, 100)),
+                minecraft_details(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(
+            reporter
+                .state
+                .lock()
+                .await
+                .job
+                .progress
+                .progress
+                .as_ref()
+                .unwrap()
+                .current,
+            75
+        );
+        parallel
+            .update(InstallPhaseId::ResolvingLoader, None, minecraft_details())
+            .await
+            .unwrap();
+        let state = reporter.state.lock().await;
+        assert_eq!(state.job.progress.phase, InstallPhaseId::ResolvingLoader);
+        assert!(state.job.progress.progress.is_none());
+        assert!(state.job.progress.parallel.is_none());
+    }
+
     #[tokio::test]
     async fn postponed_java_download_is_shared_by_job_reporters() {
         let job_id = Uuid::new_v4();
@@ -1166,6 +1364,284 @@ mod tests {
 
         assert!(second.is_java_download_postponed(21).await);
         assert!(!second.is_java_download_postponed(17).await);
+    }
+
+    #[tokio::test]
+    async fn download_progress_never_waits_for_reporter_lock() {
+        let job_id = Uuid::new_v4();
+        let reporter = InstallProgressReporter::new(
+            job_id,
+            InstallJobState::new(InstallRequest::CreateInstance {
+                name: "Test".to_string(),
+                game_version: "1.21.1".to_string(),
+                loader: ModLoader::Vanilla,
+                loader_version: None,
+                adjuncts: Vec::new(),
+                icon_path: None,
+                link: InstanceLink::Unmanaged,
+                game_dir_override: None,
+            }),
+        );
+        let guard = reporter.state.lock().await;
+        tokio::time::timeout(
+            Duration::from_millis(50),
+            reporter.record_download_progress("mods/test.jar", 64, 128),
+        )
+        .await
+        .expect("socket progress callback must not wait for the reporter lock")
+        .unwrap();
+        drop(guard);
+        InstallProgressReporter::reset_job(job_id);
+    }
+
+    #[cfg(not(feature = "tauri"))]
+    #[tokio::test]
+    async fn event_only_reporter_preserves_job_progress() {
+        let (app_state, job_id, reporter) =
+            stored_minecraft_progress_job(4, 12).await;
+        let action_reporter = reporter.clone().without_phase_updates();
+
+        action_reporter
+            .update_with_events(
+                InstallPhaseId::DownloadingContent,
+                None,
+                InstallPhaseDetails::Empty,
+                vec![InstallJobEventKind::ContentFileQueued {
+                    path: "mods/update.jar".to_string(),
+                    bytes_total: Some(256),
+                    max_attempts: 1,
+                }],
+            )
+            .await
+            .unwrap();
+
+        let snapshot = InstallProgressReporter::overlay_snapshot(
+            job_id,
+            store::get_required(job_id, &app_state)
+                .await
+                .unwrap()
+                .snapshot(),
+        )
+        .await
+        .unwrap();
+        assert_eq!(snapshot.phase, InstallPhaseId::DownloadingMinecraft);
+        assert_eq!(snapshot.progress.unwrap().current, 4);
+        assert_eq!(snapshot.items.len(), 1);
+        assert_eq!(snapshot.items[0].id, "mods/update.jar");
+        InstallProgressReporter::reset_job(job_id);
+    }
+
+    #[cfg(not(feature = "tauri"))]
+    #[tokio::test]
+    async fn content_change_progress_keeps_the_latest_persisted_snapshot() {
+        let (app_state, job_id, reporter) =
+            stored_minecraft_progress_job(0, 1).await;
+        reporter.current_state().await.unwrap();
+        {
+            let mut state = reporter.state.lock().await;
+            state.last_snapshot.as_mut().unwrap().modified -=
+                chrono::Duration::seconds(60);
+            state.job.request = InstallRequest::ChangeContent {
+                instance_id: "instance-a".into(),
+                intent: crate::install::ContentChangeIntent::UpdateAllUserAdded,
+                display_title: "Update content".into(),
+                display_icon: None,
+            };
+        }
+        reporter
+            .set_continuation(Some(InstallContinuationState::ChangeContent {
+                version: crate::install::CONTENT_CHANGE_PLAN_VERSION,
+                actions: Vec::new(),
+            }))
+            .await
+            .unwrap();
+        let persisted = store::get_required(job_id, &app_state)
+            .await
+            .unwrap()
+            .snapshot();
+        reporter
+            .update(
+                InstallPhaseId::DownloadingContent,
+                Some(InstallProgress {
+                    current: 64,
+                    total: 128,
+                    secondary: None,
+                }),
+                InstallPhaseDetails::Empty,
+            )
+            .await
+            .unwrap();
+        let state = reporter.state.lock().await;
+        let live = runtime_snapshot(&state).unwrap();
+        assert!(
+            live.modified >= persisted.modified,
+            "the frontend rejects runtime progress older than the continuation snapshot"
+        );
+        assert!(live.content_change.is_some());
+        assert_eq!(live.progress.unwrap().current, 64);
+        drop(state);
+        InstallProgressReporter::reset_job(job_id);
+    }
+
+    #[cfg(not(feature = "tauri"))]
+    #[tokio::test]
+    async fn content_change_cancel_signals_workers_before_checkpoint_and_is_idempotent()
+     {
+        let (app_state, job_id, reporter) =
+            stored_minecraft_progress_job(0, 1).await;
+        let cancellation = CancellationToken::new();
+        app_state
+            .install_job_cancellations
+            .insert(job_id, cancellation.clone());
+        let database_permit =
+            app_state.install_db_semaphore.acquire().await.unwrap();
+        let cancel = tokio::spawn(super::super::runner::cancel_job(job_id));
+        tokio::time::timeout(Duration::from_secs(1), cancellation.cancelled())
+            .await.expect("workers must stop before the cancel checkpoint can acquire SQLite");
+        drop(database_permit);
+        let snapshot = cancel.await.unwrap().unwrap();
+        assert_eq!(snapshot.status, InstallJobStatus::Canceling);
+        let current = reporter.current_state().await.unwrap();
+        store::update_status(
+            job_id,
+            InstallJobStatus::Canceled,
+            &current,
+            &app_state,
+        )
+        .await
+        .unwrap();
+        assert_eq!(
+            super::super::runner::cancel_job(job_id)
+                .await
+                .unwrap()
+                .status,
+            InstallJobStatus::Canceled
+        );
+        app_state.install_job_cancellations.remove(&job_id);
+        InstallProgressReporter::reset_job(job_id);
+    }
+
+    #[cfg(not(feature = "tauri"))]
+    #[tokio::test]
+    async fn download_progress_emits_small_samples_on_time() {
+        let mib = 1024 * 1024;
+        for (elapsed, bytes, should_emit) in [
+            (None, 100, true),
+            (Some(Duration::from_secs(2)), 100, true),
+            (Some(Duration::from_millis(500)), 100, false),
+            (Some(Duration::from_millis(500)), mib, true),
+            (Some(Duration::from_millis(50)), mib, false),
+        ] {
+            let job_id = Uuid::new_v4();
+            let reporter = InstallProgressReporter::new(
+                job_id,
+                InstallJobState::new(InstallRequest::CreateInstance {
+                    name: "Slow download test".to_string(),
+                    game_version: "1.21.1".to_string(),
+                    loader: ModLoader::Vanilla,
+                    loader_version: None,
+                    adjuncts: Vec::new(),
+                    icon_path: None,
+                    link: InstanceLink::Unmanaged,
+                    game_dir_override: None,
+                }),
+            );
+            {
+                let mut state = reporter.state.lock().await;
+                state.initialized_from_store = true;
+                state.job.progress.phase = InstallPhaseId::DownloadingContent;
+                state.pending_stall_checks.insert("file".to_string());
+                if let Some(elapsed) = elapsed {
+                    state
+                        .last_live_emit_at
+                        .insert("file".to_string(), Instant::now() - elapsed);
+                }
+                state.job.active_downloads.insert(
+                    "file".to_string(),
+                    ActiveDownloadState {
+                        name: "file".to_string(),
+                        url: String::new(),
+                        source: String::new(),
+                        bytes_downloaded: 0,
+                        bytes_total: Some(100 * mib),
+                        attempt: 1,
+                        max_attempts: 1,
+                        status: DownloadItemStatus::Downloading,
+                        last_reported_bytes: 0,
+                        last_progress_at: Utc::now(),
+                        speed_bytes_per_second: None,
+                        speed_sample_started_at: Utc::now()
+                            - chrono::TimeDelta::seconds(1),
+                        speed_sample_started_bytes: 0,
+                    },
+                );
+            }
+            reporter
+                .record_download_progress("file", bytes, 100 * mib)
+                .await
+                .unwrap();
+            let state = reporter.state.lock().await;
+            assert_eq!(
+                state.job.active_downloads["file"].last_reported_bytes,
+                if should_emit { bytes } else { 0 }
+            );
+            assert!(
+                live_download_metrics(&state.job)
+                    .0
+                    .is_some_and(|speed| speed > 0)
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn download_progress_speed_drops_without_retaining_the_peak() {
+        let job_id = Uuid::new_v4();
+        let reporter = InstallProgressReporter::new(
+            job_id,
+            InstallJobState::new(InstallRequest::CreateInstance {
+                name: "Speed test".to_string(),
+                game_version: "1.21.1".to_string(),
+                loader: ModLoader::Vanilla,
+                loader_version: None,
+                adjuncts: Vec::new(),
+                icon_path: None,
+                link: InstanceLink::Unmanaged,
+                game_dir_override: None,
+            }),
+        );
+        let mib = 1024 * 1024;
+        {
+            let mut state = reporter.state.lock().await;
+            state.initialized_from_store = true;
+            state.job.active_downloads.insert(
+                "file".to_string(),
+                ActiveDownloadState {
+                    name: "file".to_string(),
+                    url: String::new(),
+                    source: String::new(),
+                    bytes_downloaded: 40 * mib,
+                    bytes_total: Some(100 * mib),
+                    attempt: 1,
+                    max_attempts: 1,
+                    status: DownloadItemStatus::Downloading,
+                    last_reported_bytes: u64::MAX,
+                    last_progress_at: Utc::now(),
+                    speed_bytes_per_second: Some(40 * mib),
+                    speed_sample_started_at: Utc::now()
+                        - chrono::TimeDelta::seconds(1),
+                    speed_sample_started_bytes: 40 * mib,
+                },
+            );
+        }
+        reporter
+            .record_download_progress("file", 42 * mib, 100 * mib)
+            .await
+            .unwrap();
+        let state = reporter.state.lock().await;
+        let speed = state.job.active_downloads["file"]
+            .speed_bytes_per_second
+            .unwrap();
+        assert!(speed > 0 && speed <= 2 * mib);
     }
 
     #[tokio::test]
@@ -1277,10 +1753,15 @@ mod tests {
             .await
             .unwrap();
 
-        let snapshot = store::get_required(job_id, &app_state)
-            .await
-            .unwrap()
-            .snapshot();
+        let snapshot = InstallProgressReporter::overlay_snapshot(
+            job_id,
+            store::get_required(job_id, &app_state)
+                .await
+                .unwrap()
+                .snapshot(),
+        )
+        .await
+        .unwrap();
         assert_eq!(snapshot.phase, InstallPhaseId::DownloadingMinecraft);
         let progress = snapshot.progress.unwrap();
         assert_eq!(progress.current, 0);
@@ -1305,12 +1786,17 @@ mod tests {
             .await
             .unwrap();
 
-        let snapshot = store::get_required(job_id, &app_state)
-            .await
-            .unwrap()
-            .snapshot();
+        let snapshot = InstallProgressReporter::overlay_snapshot(
+            job_id,
+            store::get_required(job_id, &app_state)
+                .await
+                .unwrap()
+                .snapshot(),
+        )
+        .await
+        .unwrap();
         let progress = snapshot.progress.unwrap();
-        assert_eq!(progress.current, 0);
+        assert_eq!(progress.current, 1);
         assert_eq!(progress.total, 18);
         InstallProgressReporter::reset_job(job_id);
     }
@@ -1330,13 +1816,234 @@ mod tests {
             .await
             .unwrap();
 
-        let snapshot = store::get_required(job_id, &app_state)
-            .await
-            .unwrap()
-            .snapshot();
+        let snapshot = InstallProgressReporter::overlay_snapshot(
+            job_id,
+            store::get_required(job_id, &app_state)
+                .await
+                .unwrap()
+                .snapshot(),
+        )
+        .await
+        .unwrap();
         let progress = snapshot.progress.unwrap();
         assert_eq!(progress.current, 0);
         assert_eq!(progress.total, 20);
+        InstallProgressReporter::reset_job(job_id);
+    }
+
+    #[cfg(not(feature = "tauri"))]
+    #[tokio::test]
+    async fn content_settlements_checkpoint_by_count_and_time() {
+        let (app_state, job_id, reporter) =
+            stored_minecraft_progress_job(0, 100).await;
+        reporter.current_state().await.unwrap();
+        {
+            let mut state = reporter.state.lock().await;
+            state.last_persisted_at = Instant::now();
+        }
+        let completed = |start: usize, count: usize| {
+            (start..start + count)
+                .map(|index| InstallJobEventKind::ContentFileCompleted {
+                    path: format!("mods/{index}.jar"),
+                    bytes: 1,
+                })
+                .collect::<Vec<_>>()
+        };
+
+        reporter
+            .update_with_events(
+                InstallPhaseId::DownloadingContent,
+                Some(InstallProgress {
+                    current: 24,
+                    total: 100,
+                    secondary: None,
+                }),
+                InstallPhaseDetails::Empty,
+                completed(0, 24),
+            )
+            .await
+            .unwrap();
+        let stored_before_threshold =
+            store::get_required(job_id, &app_state).await.unwrap();
+        assert_eq!(
+            stored_before_threshold
+                .state
+                .events
+                .iter()
+                .filter(|event| is_content_settlement_event(&event.kind))
+                .count(),
+            0
+        );
+
+        reporter
+            .update_with_events(
+                InstallPhaseId::DownloadingContent,
+                Some(InstallProgress {
+                    current: 25,
+                    total: 100,
+                    secondary: None,
+                }),
+                InstallPhaseDetails::Empty,
+                completed(24, 1),
+            )
+            .await
+            .unwrap();
+        let stored_at_threshold =
+            store::get_required(job_id, &app_state).await.unwrap();
+        assert_eq!(
+            stored_at_threshold
+                .state
+                .events
+                .iter()
+                .filter(|event| is_content_settlement_event(&event.kind))
+                .count(),
+            25
+        );
+
+        {
+            let mut state = reporter.state.lock().await;
+            state.last_persisted_at = Instant::now()
+                - CONTENT_CHECKPOINT_INTERVAL
+                + Duration::from_millis(50);
+            state.checkpoint_scheduled = false;
+        }
+        reporter
+            .update_with_events(
+                InstallPhaseId::DownloadingContent,
+                Some(InstallProgress {
+                    current: 26,
+                    total: 100,
+                    secondary: None,
+                }),
+                InstallPhaseDetails::Empty,
+                completed(25, 1),
+            )
+            .await
+            .unwrap();
+        tokio::time::sleep(Duration::from_millis(250)).await;
+        let stored_after_interval =
+            store::get_required(job_id, &app_state).await.unwrap();
+        assert_eq!(
+            stored_after_interval
+                .state
+                .events
+                .iter()
+                .filter(|event| is_content_settlement_event(&event.kind))
+                .count(),
+            26
+        );
+        InstallProgressReporter::reset_job(job_id);
+    }
+
+    #[cfg(not(feature = "tauri"))]
+    #[tokio::test]
+    async fn database_checkpoint_does_not_hold_the_reporter_lock() {
+        let (app_state, job_id, reporter) =
+            stored_minecraft_progress_job(0, 100).await;
+        reporter.current_state().await.unwrap();
+        let database_permit =
+            app_state.install_db_semaphore.acquire().await.unwrap();
+        let checkpoint_reporter = reporter.clone();
+        let checkpoint = tokio::spawn(async move {
+            checkpoint_reporter
+                .update_with_events(
+                    InstallPhaseId::DownloadingContent,
+                    Some(InstallProgress {
+                        current: CONTENT_CHECKPOINT_FILE_COUNT as u64,
+                        total: 100,
+                        secondary: None,
+                    }),
+                    InstallPhaseDetails::Empty,
+                    (0..CONTENT_CHECKPOINT_FILE_COUNT)
+                        .map(|index| {
+                            InstallJobEventKind::ContentFileCompleted {
+                                path: format!("mods/{index}.jar"),
+                                bytes: 1,
+                            }
+                        })
+                        .collect(),
+                )
+                .await
+        });
+        tokio::time::timeout(Duration::from_secs(1), async {
+            loop {
+                if reporter.state.lock().await.checkpoint_in_flight {
+                    break;
+                }
+                tokio::task::yield_now().await;
+            }
+        })
+        .await
+        .expect("checkpoint should reach the database wait");
+
+        tokio::time::timeout(
+            Duration::from_millis(50),
+            reporter.record_download_request(
+                "mods/next.jar",
+                "next.jar",
+                "https://example.invalid/next.jar",
+                "test",
+                Some(10),
+                1,
+                1,
+            ),
+        )
+        .await
+        .expect("download events must not wait for checkpoint SQLite")
+        .unwrap();
+
+        drop(database_permit);
+        checkpoint.await.unwrap().unwrap();
+        InstallProgressReporter::reset_job(job_id);
+    }
+
+    #[cfg(not(feature = "tauri"))]
+    #[tokio::test]
+    async fn delayed_checkpoint_cannot_overwrite_terminal_job_state() {
+        let (app_state, job_id, reporter) =
+            stored_minecraft_progress_job(0, 100).await;
+        let stale_state = reporter.current_state().await.unwrap();
+        let mut completed_state = stale_state.clone();
+        completed_state.record_event(InstallJobEventKind::JobSucceeded {
+            instance_id: None,
+        });
+        store::update_status(
+            job_id,
+            InstallJobStatus::Succeeded,
+            &completed_state,
+            &app_state,
+        )
+        .await
+        .unwrap();
+
+        let mut delayed_checkpoint = stale_state;
+        delayed_checkpoint.record_event(
+            InstallJobEventKind::ContentFileCompleted {
+                path: "mods/late.jar".to_string(),
+                bytes: 1,
+            },
+        );
+        assert!(
+            store::checkpoint_running_state(
+                job_id,
+                &delayed_checkpoint,
+                &app_state,
+            )
+            .await
+            .unwrap()
+            .is_none()
+        );
+        let stored = store::get_required(job_id, &app_state).await.unwrap();
+        assert_eq!(stored.status, InstallJobStatus::Succeeded);
+        assert!(stored.state.events.iter().any(|event| matches!(
+            event.kind,
+            InstallJobEventKind::JobSucceeded { .. }
+        )));
+        assert!(!stored.state.events.iter().any(|event| matches!(
+            &event.kind,
+            InstallJobEventKind::ContentFileCompleted { path, .. }
+                if path == "mods/late.jar"
+        )));
         InstallProgressReporter::reset_job(job_id);
     }
 

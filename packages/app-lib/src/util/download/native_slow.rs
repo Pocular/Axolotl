@@ -10,11 +10,16 @@ const ABSOLUTE_SPEED_FLOOR: u64 = 16 * 1024;
 const COLD_SPEED_FLOOR: u64 = 256 * 1024;
 const RECONNECT_OVERHEAD: Duration = Duration::from_millis(600);
 const MIN_SAVINGS: Duration = Duration::from_secs(2);
+#[cfg(not(test))]
+const IDLE_TIMEOUT: Duration = Duration::from_secs(20);
+#[cfg(test)]
+const IDLE_TIMEOUT: Duration = Duration::from_millis(500);
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum SlowDecision {
     Continue,
     Probe { bytes_per_second: u64 },
+    Idle { elapsed: Duration },
     Commit,
 }
 
@@ -28,6 +33,21 @@ pub(crate) struct NativeSlowPolicy {
 }
 
 impl NativeSlowPolicy {
+    pub(crate) fn observe_with_pressure(
+        &mut self,
+        downloaded: u64,
+        remaining: u64,
+        pressure: super::local_resources::Pressure,
+    ) -> SlowDecision {
+        if pressure.blocks_expansion() {
+            self.window_started_at = Instant::now();
+            self.window_start_bytes = downloaded;
+            self.slow_windows = 0;
+            SlowDecision::Continue
+        } else {
+            self.observe(downloaded, remaining)
+        }
+    }
     pub(crate) fn new(
         starting_bytes: u64,
         expected_speed: Option<u64>,
@@ -52,6 +72,9 @@ impl NativeSlowPolicy {
             return SlowDecision::Continue;
         }
         let elapsed = self.window_started_at.elapsed();
+        if downloaded == self.window_start_bytes && elapsed >= IDLE_TIMEOUT {
+            return SlowDecision::Idle { elapsed };
+        }
         if elapsed < WINDOW {
             return SlowDecision::Continue;
         }
@@ -127,6 +150,36 @@ mod tests {
     use super::*;
 
     #[test]
+    fn local_pressure_does_not_trigger_route_switch_or_idle_failure() {
+        let mut policy = NativeSlowPolicy::new(0, None);
+        policy.window_started_at = Instant::now() - Duration::from_secs(60);
+        assert_eq!(
+            policy.observe_with_pressure(
+                0,
+                64 * 1024 * 1024,
+                super::super::local_resources::Pressure {
+                    cpu_percent: 90,
+                    write_latency_ms: 0.0
+                }
+            ),
+            SlowDecision::Continue
+        );
+        assert_eq!(policy.observe(0, 64 * 1024 * 1024), SlowDecision::Continue);
+        policy.window_started_at = Instant::now() - Duration::from_secs(60);
+        assert_eq!(
+            policy.observe_with_pressure(
+                0,
+                64 * 1024 * 1024,
+                super::super::local_resources::Pressure {
+                    cpu_percent: 0,
+                    write_latency_ms: 80.0
+                }
+            ),
+            SlowDecision::Continue
+        );
+    }
+
+    #[test]
     fn switch_requires_repayment_of_restarted_bytes() {
         assert!(!should_switch(1024, 2048, 1024, 1024 * 1024));
     }
@@ -138,6 +191,16 @@ mod tests {
             2 * 1024 * 1024,
             64 * 1024 * 1024,
             64 * 1024 * 1024,
+        ));
+    }
+
+    #[test]
+    fn idle_body_is_a_terminal_recovery_decision() {
+        let mut policy = NativeSlowPolicy::new(0, None);
+        std::thread::sleep(IDLE_TIMEOUT + Duration::from_millis(10));
+        assert!(matches!(
+            policy.observe(0, 64 * 1024 * 1024),
+            SlowDecision::Idle { .. }
         ));
     }
 }

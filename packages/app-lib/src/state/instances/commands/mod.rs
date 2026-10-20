@@ -2,6 +2,15 @@ mod create_instance;
 pub use self::create_instance::CreateInstance;
 pub(crate) use self::create_instance::create_instance;
 
+mod create_direct_link_instance;
+pub use self::create_direct_link_instance::CreateDirectLinkInstance;
+pub(crate) use self::create_direct_link_instance::create_direct_link_instance;
+mod sync_direct_link_instances;
+pub(crate) use self::sync_direct_link_instances::sync_direct_link_instances;
+pub use self::sync_direct_link_instances::{
+    DirectLinkSyncReport, ExternalMinecraftRoot,
+};
+
 mod edit_instance;
 pub use self::edit_instance::{
     AppliedContentSetPatch, EditInstance, InstanceLaunchOverridesPatch,
@@ -26,7 +35,8 @@ pub(crate) use self::list_content::{
 
 mod content_snapshot;
 pub(crate) use self::content_snapshot::{
-    get_content_snapshot, reconcile_curseforge_members,
+    get_cached_content_snapshot, get_content_snapshot,
+    reconcile_curseforge_members,
 };
 
 mod remove_instance;
@@ -36,13 +46,16 @@ mod refresh_instances;
 pub(crate) use self::refresh_instances::*;
 
 mod sync_content_files;
-pub(crate) use self::sync_content_files::sync_content_files;
+pub(crate) use self::sync_content_files::{
+    instance_content_root, sync_content_files,
+};
 
 mod launch_context;
 pub(crate) use self::launch_context::*;
 
 mod apply_content_install;
 pub(crate) use self::apply_content_install::*;
+pub(crate) use apply_content_install::ProjectFileRecord;
 
 mod check_content_updates;
 

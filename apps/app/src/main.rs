@@ -5,7 +5,7 @@
 #![recursion_limit = "256"]
 
 use native_dialog::{DialogBuilder, MessageLevel};
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 use std::sync::atomic::Ordering;
 use std::{
     env, fs,
@@ -13,7 +13,7 @@ use std::{
     path::{Component, Path, PathBuf},
 };
 use tauri::{
-    Listener, Manager,
+    Emitter, Listener, Manager,
     http::{Response, StatusCode, header},
 };
 use tauri_plugin_fs::FsExt;
@@ -27,13 +27,7 @@ mod lightweight_mode;
 mod mod_translation;
 mod portable;
 mod seed_map;
-
-#[derive(Default, Deserialize, Serialize)]
-struct UpdateChannelState {
-    active_channel: Option<String>,
-    immediate_update_fetch: Option<bool>,
-    updates_paused: Option<bool>,
-}
+mod window_frame;
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -132,7 +126,7 @@ fn is_allowed_blockbench_skin_request(
 ) -> bool {
     if !matches!(
         request.uri().host(),
-        Some("localhost") | Some("axolotl-skin.localhost")
+        Some("localhost" | "axolotl-skin.localhost")
     ) {
         return false;
     }
@@ -214,8 +208,68 @@ async fn initialize_state(app: tauri::AppHandle) -> api::Result<()> {
 
     tracing::info!("Initializing app state...");
     State::init(app.config().identifier.clone()).await?;
+    let anti_piracy_app = app.clone();
+    tauri::async_runtime::spawn(async move {
+        let status = theseus::anti_piracy::check_region().await;
+        if let Err(error) =
+            anti_piracy_app.emit("anti-piracy-status-changed", status)
+        {
+            tracing::warn!(%error, "Could not notify frontend of offline account eligibility");
+        }
+    });
+    if let Err(error) = theseus::instance::maintain_backup_repository().await {
+        tracing::warn!(%error, "Failed to maintain the instance backup repository");
+    }
+
+    // The logger starts before the database is available, so the stored level
+    // is applied here once settings can be read. Beta keeps enough detail for
+    // diagnostics by requiring DEBUG or TRACE.
+    match theseus::settings::get().await {
+        Ok(mut settings) => {
+            match resolve_update_channel(&app).await {
+                Ok(channel) => {
+                    let log_level = api::settings::log_level_for_channel(
+                        &channel,
+                        &settings.log_level,
+                    );
+                    if log_level != settings.log_level {
+                        settings.log_level = log_level;
+                        if let Err(error) = theseus::settings::patch(
+                                serde_json::json!({ "log_level": settings.log_level }),
+                        )
+                        .await
+                        {
+                            tracing::warn!(
+                                "Could not save the Beta log level: {error}"
+                            );
+                        }
+                    }
+                }
+                Err(error) => {
+                    tracing::warn!(
+                        "Could not resolve the update channel: {error}"
+                    );
+                }
+            }
+
+            if std::env::var_os("RUST_LOG").is_none()
+                && let Err(error) = theseus::set_log_level(&settings.log_level)
+            {
+                tracing::warn!("Keeping the default log level: {error}");
+            }
+        }
+        Err(error) => {
+            tracing::warn!("Could not read the stored log level: {error}");
+        }
+    }
 
     let state = State::get().await?;
+    // Do not start accepting group writes until the legacy import succeeds.
+    // The JSON store becomes authoritative after the first write; swallowing
+    // this error would let a fallback Favorites-only store overwrite groups
+    // that still exist in SQLite.
+    theseus::state::instance_groups::ensure_imported(&state).await?;
+
     app.asset_protocol_scope()
         .allow_directory(state.directories.caches_dir(), true)?;
     app.asset_protocol_scope()
@@ -235,10 +289,18 @@ async fn initialize_state(app: tauri::AppHandle) -> api::Result<()> {
 }
 
 #[tauri::command]
-fn get_update_channel(app: tauri::AppHandle) -> api::Result<String> {
-    let channel = read_update_channel_state(&app)?
+async fn get_update_channel(app: tauri::AppHandle) -> api::Result<String> {
+    resolve_update_channel(&app).await
+}
+
+async fn resolve_update_channel<R: tauri::Runtime>(
+    app: &tauri::AppHandle<R>,
+) -> api::Result<String> {
+    let settings_dir = update_channel_settings_dir(app)?;
+    let state = theseus::read_update_channel_state(&settings_dir).await?;
+    let channel = state
         .active_channel
-        .unwrap_or_else(|| "release".to_string());
+        .unwrap_or_else(|| theseus::default_update_channel().to_string());
 
     match channel.as_str() {
         "release" | "beta" => Ok(channel),
@@ -250,7 +312,17 @@ fn get_update_channel(app: tauri::AppHandle) -> api::Result<String> {
 }
 
 #[tauri::command]
-fn set_update_channel(
+async fn get_current_app_database_path(
+    app: tauri::AppHandle,
+) -> api::Result<String> {
+    Ok(theseus::current_app_database_path(&app.config().identifier)
+        .await?
+        .to_string_lossy()
+        .into_owned())
+}
+
+#[tauri::command]
+async fn set_update_channel(
     app: tauri::AppHandle,
     channel: String,
 ) -> api::Result<()> {
@@ -261,18 +333,23 @@ fn set_update_channel(
         .into());
     }
 
-    let mut state = read_update_channel_state(&app)?;
+    let settings_dir = update_channel_settings_dir(&app)?;
+    let mut state = theseus::read_update_channel_state(&settings_dir).await?;
     state.active_channel = Some(channel);
-    write_update_channel_state(&app, &state)?;
-    Ok(())
+    write_update_channel_state(&app, &state)
 }
 
 #[tauri::command]
-fn get_update_preferences(
+async fn get_update_preferences(
     app: tauri::AppHandle,
 ) -> api::Result<UpdatePreferences> {
-    let state = read_update_channel_state(&app)?;
-    let is_beta = state.active_channel.as_deref() == Some("beta");
+    let settings_dir = update_channel_settings_dir(&app)?;
+    let state = theseus::read_update_channel_state(&settings_dir).await?;
+    let is_beta = match state.active_channel.as_deref() {
+        Some("beta") => true,
+        Some("release") => false,
+        _ => theseus::default_update_channel() == "beta",
+    };
     Ok(UpdatePreferences {
         immediate_update_fetch: is_beta
             || state.immediate_update_fetch.unwrap_or(false),
@@ -281,56 +358,37 @@ fn get_update_preferences(
 }
 
 #[tauri::command]
-fn set_update_preferences(
+async fn set_update_preferences(
     app: tauri::AppHandle,
     immediate_update_fetch: bool,
     updates_paused: bool,
 ) -> api::Result<()> {
-    let mut state = read_update_channel_state(&app)?;
+    let settings_dir = update_channel_settings_dir(&app)?;
+    let mut state = theseus::read_update_channel_state(&settings_dir).await?;
     state.immediate_update_fetch = Some(immediate_update_fetch);
     state.updates_paused = Some(updates_paused);
     write_update_channel_state(&app, &state)
 }
 
-fn update_channel_state_path(app: &tauri::AppHandle) -> api::Result<PathBuf> {
-    let settings_dir = theseus::DirectoryInfo::initial_settings_dir_path(
-        &app.config().identifier,
-    )
-    .ok_or_else(|| {
-        theseus::Error::from(theseus::ErrorKind::FSError(
-            "Could not find update channel settings directory".to_string(),
-        ))
-    })?;
-    Ok(settings_dir.join("update-channel.json"))
-}
-
-fn read_update_channel_state(
-    app: &tauri::AppHandle,
-) -> api::Result<UpdateChannelState> {
-    let path = update_channel_state_path(app)?;
-    match std::fs::read_to_string(path) {
-        Ok(contents) => serde_json::from_str(&contents).map_err(|error| {
-            theseus::Error::from(theseus::ErrorKind::OtherError(
-                error.to_string(),
+fn update_channel_settings_dir<R: tauri::Runtime>(
+    app: &tauri::AppHandle<R>,
+) -> api::Result<PathBuf> {
+    theseus::DirectoryInfo::initial_settings_dir_path(&app.config().identifier)
+        .ok_or_else(|| {
+            theseus::Error::from(theseus::ErrorKind::FSError(
+                "Could not find update channel settings directory".to_string(),
             ))
             .into()
-        }),
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
-            Ok(UpdateChannelState::default())
-        }
-        Err(error) => Err(error.into()),
-    }
+        })
 }
 
 fn write_update_channel_state(
     app: &tauri::AppHandle,
-    state: &UpdateChannelState,
+    state: &theseus::UpdateChannelState,
 ) -> api::Result<()> {
-    let path = update_channel_state_path(app)?;
-    let settings_dir = path
-        .parent()
-        .expect("Update channel state path has a parent directory");
-    std::fs::create_dir_all(settings_dir)?;
+    let settings_dir = update_channel_settings_dir(app)?;
+    let path = theseus::update_channel_state_file_path(&settings_dir);
+    std::fs::create_dir_all(&settings_dir)?;
     let temporary_path = settings_dir.join("update-channel.json.tmp");
     let contents = serde_json::to_vec(state).map_err(|error| {
         theseus::Error::from(theseus::ErrorKind::OtherError(error.to_string()))
@@ -345,6 +403,21 @@ async fn copy_release_database_to_beta(
     app: tauri::AppHandle,
 ) -> api::Result<()> {
     theseus::copy_release_database_to_beta(&app.config().identifier).await?;
+    Ok(())
+}
+
+#[tauri::command]
+async fn copy_database_between_channels(
+    app: tauri::AppHandle,
+    source_channel: String,
+    target_channel: String,
+) -> api::Result<()> {
+    theseus::copy_database_between_channels(
+        &app.config().identifier,
+        &source_channel,
+        &target_channel,
+    )
+    .await?;
     Ok(())
 }
 
@@ -398,54 +471,11 @@ fn show_window(app: tauri::AppHandle) {
 }
 
 #[tauri::command]
-fn set_transparent_window_frame(
+async fn set_transparent_window_frame(
     enabled: bool,
     window: tauri::Window,
-) -> Result<(), String> {
-    #[cfg(windows)]
-    {
-        use windows::Win32::Graphics::Dwm::{
-            DWMWA_BORDER_COLOR, DWMWA_COLOR_DEFAULT, DWMWA_COLOR_NONE,
-            DWMWA_WINDOW_CORNER_PREFERENCE, DWMWCP_DEFAULT, DWMWCP_ROUND,
-            DwmSetWindowAttribute,
-        };
-
-        window.set_shadow(true).map_err(|error| error.to_string())?;
-
-        let hwnd = window.hwnd().map_err(|error| error.to_string())?;
-        let corner_preference = if enabled {
-            DWMWCP_ROUND
-        } else {
-            DWMWCP_DEFAULT
-        };
-        let border_color = if enabled {
-            DWMWA_COLOR_NONE
-        } else {
-            DWMWA_COLOR_DEFAULT
-        };
-
-        unsafe {
-            DwmSetWindowAttribute(
-                hwnd,
-                DWMWA_WINDOW_CORNER_PREFERENCE,
-                std::ptr::from_ref(&corner_preference).cast(),
-                std::mem::size_of_val(&corner_preference) as u32,
-            )
-            .map_err(|error| error.to_string())?;
-            DwmSetWindowAttribute(
-                hwnd,
-                DWMWA_BORDER_COLOR,
-                std::ptr::from_ref(&border_color).cast(),
-                std::mem::size_of_val(&border_color) as u32,
-            )
-            .map_err(|error| error.to_string())?;
-        }
-    }
-
-    #[cfg(not(windows))]
-    let _ = (enabled, window);
-
-    Ok(())
+) -> Result<window_frame::FrameResult, String> {
+    window_frame::apply_frame(enabled, &window).await
 }
 
 #[tauri::command]
@@ -476,8 +506,40 @@ async fn toggle_decorations(b: bool, window: tauri::Window) -> api::Result<()> {
 }
 
 #[tauri::command]
-fn restart_app(app: tauri::AppHandle) {
-    app.restart();
+async fn restart_app(app: tauri::AppHandle) -> api::Result<()> {
+    if theseus::State::initialized()
+        && theseus::instance::has_active_backup_operations().await?
+    {
+        return Err(theseus::Error::from(theseus::ErrorKind::InputError(
+            "Backup operations are still running".to_string(),
+        ))
+        .into());
+    }
+    app.restart()
+}
+
+#[tauri::command]
+async fn exit_app(app: tauri::AppHandle, force: bool) -> api::Result<()> {
+    if theseus::State::initialized()
+        && theseus::instance::has_active_backup_operations().await?
+    {
+        if !force {
+            return Err(theseus::Error::from(theseus::ErrorKind::InputError(
+                "Backup operations are still running".to_string(),
+            ))
+            .into());
+        }
+        if theseus::instance::has_active_backup_repository_move().await? {
+            return Err(theseus::Error::from(theseus::ErrorKind::InputError(
+                "The launcher cannot force exit while the backup repository is being moved"
+                    .to_string(),
+            ))
+            .into());
+        }
+        theseus::instance::interrupt_active_backup_operations().await?;
+    }
+    app.exit(0);
+    Ok(())
 }
 
 #[tauri::command]
@@ -691,9 +753,14 @@ fn main() {
                 ));
             }
 
-            if let Some(win) = app.get_window("main") {
-                let _ = win.set_focus();
-            }
+            // A second launch must restore the launcher UI. The main window
+            // may be hidden or destroyed when the app is in lightweight mode,
+            // so focusing it is not enough (see #490).
+            let app = app.clone();
+            tauri::async_runtime::spawn(async move {
+                let _ =
+                    app.state::<lightweight_mode::LightweightMode>().exit(&app);
+            });
         }))
         .plugin(tauri_plugin_http::init())
         .plugin(tauri_plugin_os::init())
@@ -721,7 +788,7 @@ fn main() {
             window_state_builder.build()
         })
         .setup(|app| {
-            lightweight_mode::init(&app.handle());
+            lightweight_mode::init(app.handle());
             #[cfg(target_os = "windows")]
             if let Some(window) = app.get_window("main") {
                 d3d9_compat::initialize(&window);
@@ -778,7 +845,7 @@ fn main() {
                 ));
             });
 
-            #[cfg(not(target_os = "linux"))]
+            #[cfg(target_os = "macos")]
             if let Some(window) = app.get_window("main")
                 && let Err(e) = window.set_shadow(true)
             {
@@ -805,6 +872,7 @@ fn main() {
         .plugin(api::planet_minecraft::init())
         .plugin(api::settings::init())
         .plugin(api::storage::init())
+        .plugin(api::system_accent::init())
         .plugin(api::seed_map::init())
         .plugin(api::schematic_preview::init())
         .plugin(api::shortcuts::init())
@@ -819,6 +887,7 @@ fn main() {
         .plugin(api::datapacks::init())
         .plugin(api::drop::init())
         .plugin(api::files::init())
+        .plugin(api::fonts::init())
         .plugin(api::friends::init())
         .plugin(api::worlds::init())
         .plugin(api::terracotta::init())
@@ -829,10 +898,12 @@ fn main() {
         .invoke_handler(tauri::generate_handler![
             initialize_state,
             get_update_channel,
+            get_current_app_database_path,
             set_update_channel,
             get_update_preferences,
             set_update_preferences,
             copy_release_database_to_beta,
+            copy_database_between_channels,
             beta_database_exists,
             backup_app_db_for_update,
             set_discord_activity,
@@ -845,16 +916,17 @@ fn main() {
             remove_enqueued_update,
             set_restart_after_pending_update,
             is_apt_linux,
-            install_apt_update,
             toggle_decorations,
             set_transparent_window_frame,
             show_window,
             restart_app,
+            exit_app,
             check_symlink_capability,
             is_elevated,
             allow_symlink_target,
             lightweight_mode::lightweight_mode_frontend_ready,
             lightweight_mode::lightweight_mode_set_route,
+            lightweight_mode::lightweight_mode_enter,
         ]);
 
     tracing::info!("Initializing app...");
@@ -898,9 +970,7 @@ fn main() {
                     {
                         fn set_changelog_toast(version: Option<String>) {
                             let toast_result: theseus::Result<()> = tauri::async_runtime::block_on(async move {
-                                let mut settings = settings::get().await?;
-                                settings.pending_update_toast_for_version = version;
-                                settings::set(settings).await?;
+                                settings::patch(serde_json::json!({ "pending_update_toast_for_version": version })).await?;
                                 Ok(())
                             });
                             if let Err(e) = toast_result {
@@ -910,39 +980,50 @@ fn main() {
                             }
                         }
 
-                        let update = if should_restart {
-                            (**update).clone()
+                        let version = update.version.clone();
+                        let install_result = if is_apt_linux() {
+                            tauri::async_runtime::block_on(
+                                install_apt_package(&version, data),
+                            )
+                            .map_err(|error| error.to_string())
                         } else {
-                            (**update).clone().restart_after_install(false)
+                            let update = if should_restart {
+                                (**update).clone()
+                            } else {
+                                (**update).clone().restart_after_install(false)
+                            };
+
+                            // Persist the trigger before installing: on Windows
+                            // the updater plugin launches the NSIS installer and
+                            // exits the process via `std::process::exit(0)`
+                            // without returning, so the success path below never
+                            // runs there.
+                            #[cfg(target_os = "windows")]
+                            set_changelog_toast(Some(update.version.clone()));
+
+                            update.install(data).map_err(|error| error.to_string())
                         };
 
-                        // Persist the trigger before installing: on Windows the
-                        // updater plugin launches the NSIS installer and exits the
-                        // process via `std::process::exit(0)` without returning, so
-                        // the success path below never runs there.
-                        #[cfg(target_os = "windows")]
-                        set_changelog_toast(Some(update.version.clone()));
-
-                        match update.install(data) {
+                        match install_result {
                             Ok(()) => {
-                                set_changelog_toast(Some(update.version.clone()));
+                                set_changelog_toast(Some(version.clone()));
                                 if should_restart {
                                     tracing::info!(
                                         "Pending update installed successfully (version {}); restarting because user requested reload",
-                                        update.version
+                                        version
                                     );
                                     app.restart();
                                 } else {
                                     tracing::info!(
                                         "Pending update installed successfully (version {}); exiting without relaunch (user did not request reload)",
-                                        update.version
+                                        version
                                     );
                                 }
                             }
                             Err(e) => {
                                 tracing::error!(
                                     "Pending update install failed (version {}): {e}",
-                                    update.version
+                                    version
                                 );
                                 set_changelog_toast(None);
 

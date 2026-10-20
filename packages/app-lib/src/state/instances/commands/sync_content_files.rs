@@ -3,13 +3,55 @@ use crate::state::instances::adapters::{filesystem, sqlite};
 use crate::state::instances::{Instance, InstanceFile};
 use crate::state::{
     CacheBehaviour, CachedEntry, CachedFileUpdate, ContentProvider,
-    ContentProviderRef, ModrinthVersionId, ProjectType,
+    ContentProviderRef, DirectoryInfo, ModrinthVersionId, ProjectType,
 };
 use crate::util::fetch::{self, FetchSemaphore};
+use crate::util::io;
 use chrono::Utc;
 use std::collections::{HashMap, HashSet};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use uuid::Uuid;
+
+/// Resolves the directory whose game content (`mods`, `resourcepacks`, ...)
+/// belongs to this instance.
+///
+/// Ordinary instances own their profile directory under Axolotl's instances
+/// folder, honouring a per-instance `game_dir_override`
+/// (`DirectoryInfo::instance_game_dir`). Directly associated instances have no
+/// profile directory: their content lives inside the externally managed
+/// installation, resolved through the launcher dialect so PCL version
+/// isolation (`versions/<id>` gameDir) is honored; the shared linked
+/// `.minecraft` root is the fallback when the dialect resolution cannot be
+/// completed (see `launcher::linked_game_dir`).
+pub(crate) fn instance_content_root(
+    directories: &DirectoryInfo,
+    instance: &Instance,
+) -> crate::Result<PathBuf> {
+    if let Some(game_dir) =
+        crate::launcher::linked_game_dir(instance).or_else(|| {
+            instance
+                .linked_dot_minecraft
+                .as_deref()
+                .map(str::trim)
+                .filter(|linked| !linked.is_empty())
+                .map(PathBuf::from)
+        })
+    {
+        return Ok(io::canonicalize(game_dir)?);
+    }
+
+    Ok(io::canonicalize(directories.instance_game_dir(instance))?)
+}
+
+/// Joins a stored logical relative path using native path components. Content
+/// rows intentionally use `/` as their cross-platform serialization format;
+/// filesystem access must not concatenate that representation directly.
+pub(crate) fn join_content_path(root: &Path, relative: &str) -> PathBuf {
+    relative
+        .split(['/', '\\'])
+        .filter(|component| !component.is_empty() && *component != ".")
+        .fold(root.to_path_buf(), |path, component| path.join(component))
+}
 
 pub(crate) async fn sync_content_files(
     instance_id: &str,
@@ -29,12 +71,40 @@ pub(crate) async fn sync_instance_content_files(
     instance: &Instance,
     state: &State,
 ) -> crate::Result<Vec<InstanceFile>> {
-    // Keep the filesystem snapshot stable until its database rows commit.
-    let _instance_lock = state.lock_instance_content(&instance.id).await;
-    let scanned = filesystem::scan_content_files_from(
-        &state.directories.instance_game_dir(instance),
-        &instance.path,
-    )?;
+    let watch_snapshot = state
+        .file_watcher
+        .content_watch_snapshot(&instance.id)
+        .await;
+    let dirty_paths = watch_snapshot
+        .as_ref()
+        .map(|snapshot| snapshot.dirty_paths.clone())
+        .unwrap_or_default();
+    let content_root = instance_content_root(&state.directories, instance)?;
+    // The hash-cache layer resolves key paths against Axolotl's own instances
+    // folder (`state/cache.rs`). For directly associated instances the
+    // absolute linked root is passed as the "instance path": joining an
+    // absolute path replaces the base, so the cache layer hashes the linked
+    // files instead of failing on the nonexistent profile path. Managed
+    // instances keep the relative profile path so the cache layer can resolve
+    // a `game_dir_override` target from the database.
+    let is_direct_linked = crate::launcher::linked_game_dir(instance).is_some()
+        || instance
+            .linked_dot_minecraft
+            .as_deref()
+            .map(str::trim)
+            .is_some_and(|linked| !linked.is_empty());
+    let instance_files_root = if is_direct_linked {
+        content_root.clone()
+    } else {
+        state.directories.instances_dir().join(&instance.path)
+    };
+    let cache_key_path = if is_direct_linked {
+        content_root.to_string_lossy().into_owned()
+    } else {
+        instance.path.clone()
+    };
+    let scanned =
+        filesystem::scan_content_files_from(&content_root, &cache_key_path)?;
     let scanned_paths = scanned
         .iter()
         .map(|file| file.relative_path.clone())
@@ -103,19 +173,29 @@ pub(crate) async fn sync_instance_content_files(
     for file in scanned {
         let hash_key = file.hash_cache_key.trim_end_matches(".disabled");
         let existing_file = existing_files_by_path.get(&file.relative_path);
-        let (scanned_sha1, scanned_size) = if existing_file.is_some() {
-            let path = state
-                .directories
-                .instances_dir()
-                .join(&instance.path)
-                .join(&file.relative_path);
+        let (scanned_sha1, scanned_size) = if let Some(existing_file) =
+            existing_file
+            && existing_file.size == file.size
+            && !content_path_is_dirty(&file.relative_path, &dirty_paths)
+        {
+            (existing_file.sha1.clone(), file.size)
+        } else if existing_file.is_some() {
+            let path =
+                join_content_path(&instance_files_root, &file.relative_path);
             let (_, sha1) = fetch::sha1_file_async(&path).await?;
             (sha1, file.size)
         } else {
-            let Some(hash) = hashes_by_key.get(hash_key) else {
-                continue;
-            };
-            (hash.hash.clone(), hash.size)
+            match hashes_by_key.get(hash_key) {
+                Some(hash) => (hash.hash.clone(), hash.size),
+                None => {
+                    let path = join_content_path(
+                        &instance_files_root,
+                        &file.relative_path,
+                    );
+                    let (_, sha1) = fetch::sha1_file_async(&path).await?;
+                    (sha1, file.size)
+                }
+            }
         };
         let reclaim_candidate = if existing_file.is_some() {
             None
@@ -185,7 +265,9 @@ pub(crate) async fn sync_instance_content_files(
     // resource packs) for files that don't have them yet. This also backfills
     // rows created before these features existed; `icon_path` distinguishes
     // not-attempted (NULL), no-icon (empty string), and cached (path).
-    let instance_dir = state.directories.instance_game_dir(instance);
+    // `content_root` already resolves the override / linked root consistently
+    // for both managed and directly associated instances.
+    let instance_dir = content_root;
     let icon_cache_dir = state.directories.caches_dir().join("icons");
     for file in &mut files {
         let Some(project_type) = project_type_for_file(file) else {
@@ -215,7 +297,7 @@ pub(crate) async fn sync_instance_content_files(
             continue;
         }
 
-        let path = instance_dir.join(&file.relative_path);
+        let path = join_content_path(&instance_dir, &file.relative_path);
 
         // Resource packs are read entry-wise so large archives are not
         // materialized in memory just to fetch `pack.png`.
@@ -264,6 +346,10 @@ pub(crate) async fn sync_instance_content_files(
         }
     }
 
+    // Hashing is deliberately outside the instance lock. The lock only
+    // protects the short database reconciliation transaction, so a large
+    // modpack cannot block disable/delete operations for its entire scan.
+    let _instance_lock = state.lock_instance_content(&instance.id).await;
     let mut tx = state.pool.begin_with("BEGIN IMMEDIATE").await?;
     sqlite::content_rows::ensure_instance_exists(&instance.id, &mut tx).await?;
     sqlite::content_rows::mark_instance_files_missing(&instance.id, &mut tx)
@@ -337,7 +423,26 @@ pub(crate) async fn sync_instance_content_files(
 
     tx.commit().await?;
 
+    if let Some(snapshot) = watch_snapshot {
+        state
+            .file_watcher
+            .clear_content_changes_if_generation(
+                &instance.id,
+                snapshot.generation,
+            )
+            .await;
+    }
+
     Ok(synced_files)
+}
+
+fn content_path_is_dirty(path: &str, dirty_paths: &HashSet<String>) -> bool {
+    dirty_paths.iter().any(|dirty| {
+        path == dirty
+            || path
+                .strip_prefix(dirty)
+                .is_some_and(|rest| rest.starts_with('/'))
+    })
 }
 
 async fn cache_extracted_icon(
@@ -443,9 +548,11 @@ pub(crate) fn modrinth_update_enabled(
 ) -> bool {
     match origin_provider {
         Some(ContentProvider::Modrinth) => true,
-        Some(ContentProvider::CurseForge)
-        | Some(ContentProvider::McArchive)
-        | Some(ContentProvider::Local) => false,
+        Some(
+            ContentProvider::CurseForge
+            | ContentProvider::McArchive
+            | ContentProvider::Local,
+        ) => false,
         None => provider_refs.iter().all(|reference| {
             matches!(reference, ContentProviderRef::Modrinth { .. })
         }),
@@ -572,6 +679,19 @@ mod tests {
         ModrinthVersionId,
     };
     use std::fs;
+    use std::sync::Arc;
+
+    #[test]
+    fn unchanged_content_paths_reuse_existing_hashes_until_watcher_marks_them_dirty()
+     {
+        let dirty = HashSet::from([
+            "mods/changed.jar".to_string(),
+            "resourcepacks".to_string(),
+        ]);
+        assert!(!content_path_is_dirty("mods/unchanged.jar", &dirty));
+        assert!(content_path_is_dirty("mods/changed.jar", &dirty));
+        assert!(content_path_is_dirty("resourcepacks/pack.zip", &dirty));
+    }
 
     fn modrinth_ref() -> ContentProviderRef {
         ContentProviderRef::Modrinth {
@@ -631,6 +751,184 @@ mod tests {
         for name in temporary_names {
             assert!(mods.join(name).is_file());
         }
+    }
+
+    // -----------------------------------------------------------------------
+    // Directly associated instances scan their linked installation
+    // -----------------------------------------------------------------------
+
+    /// The launcher state is a process-wide singleton; initialize it once and
+    /// reuse it so `State::get()` (used by the hash cache) resolves inside
+    /// these APIs. The state root is intentionally leaked (`.keep()`) because
+    /// the shared state outlives this function.
+    async fn global_state() -> Arc<State> {
+        if !State::initialized() {
+            let root = tempfile::TempDir::new().unwrap().keep();
+            let _ =
+                State::init_for_test(root.to_string_lossy().to_string()).await;
+        }
+        State::get().await.unwrap()
+    }
+
+    fn write_self_contained_version(minecraft: &Path, version_id: &str) {
+        let version_dir = minecraft.join("versions").join(version_id);
+        fs::create_dir_all(&version_dir).unwrap();
+        fs::write(
+            version_dir.join(format!("{version_id}.json")),
+            serde_json::to_vec(&serde_json::json!({
+                "id": version_id,
+                "mainClass": "net.minecraft.client.main.Main"
+            }))
+            .unwrap(),
+        )
+        .unwrap();
+    }
+
+    #[tokio::test]
+    async fn direct_link_refresh_scans_linked_dot_minecraft_content() {
+        let state = global_state().await;
+        let minecraft = tempfile::TempDir::new().unwrap();
+        write_self_contained_version(minecraft.path(), "1.12.2-linked");
+        fs::create_dir_all(minecraft.path().join("mods")).unwrap();
+        fs::write(
+            minecraft.path().join("mods/linked-mod.jar"),
+            b"linked mod bytes",
+        )
+        .unwrap();
+
+        let instance = crate::state::create_direct_link_instance(
+            crate::state::CreateDirectLinkInstance {
+                name: None,
+                launcher_type:
+                    crate::api::pack::import::ImportLauncherType::Generic,
+                base_path: minecraft.path().to_path_buf(),
+                instance_folder: "versions/1.12.2-linked".to_string(),
+                instance_path: None,
+                game_dir_mode: None,
+            },
+            &state,
+        )
+        .await
+        .unwrap();
+
+        let files = sync_instance_content_files(&instance, &state)
+            .await
+            .unwrap();
+
+        assert!(
+            files
+                .iter()
+                .any(|file| file.relative_path == "mods/linked-mod.jar"),
+            "refresh must discover mods inside the linked `.minecraft`, got: {:?}",
+            files
+                .iter()
+                .map(|file| &file.relative_path)
+                .collect::<Vec<_>>(),
+        );
+
+        // A second refresh re-hashes the existing row. It must continue to
+        // use the linked external root rather than the Axolotl profile path.
+        let refreshed = sync_instance_content_files(&instance, &state)
+            .await
+            .unwrap();
+        assert!(
+            refreshed
+                .iter()
+                .any(|file| file.relative_path == "mods/linked-mod.jar")
+        );
+    }
+
+    #[tokio::test]
+    async fn pcl_isolated_direct_link_scans_version_isolated_content() {
+        let state = global_state().await;
+        let minecraft = tempfile::TempDir::new().unwrap();
+        write_self_contained_version(minecraft.path(), "1.12.2-pcl");
+        // Version isolation on: PCL resolves this version's gameDir to
+        // versions/<id>, so its mods folder lives beside the version JSON.
+        let version_dir = minecraft.path().join("versions/1.12.2-pcl");
+        fs::create_dir_all(version_dir.join("PCL")).unwrap();
+        fs::write(
+            version_dir.join("PCL/Setup.ini"),
+            "VersionArgumentIndieV2: true\n",
+        )
+        .unwrap();
+        fs::create_dir_all(version_dir.join("mods")).unwrap();
+        fs::write(
+            version_dir.join("mods/isolated-mod.jar"),
+            b"isolated mod bytes",
+        )
+        .unwrap();
+
+        let instance = crate::state::create_direct_link_instance(
+            crate::state::CreateDirectLinkInstance {
+                name: None,
+                launcher_type:
+                    crate::api::pack::import::ImportLauncherType::PCL2,
+                base_path: minecraft.path().to_path_buf(),
+                instance_folder: "versions/1.12.2-pcl".to_string(),
+                instance_path: None,
+                game_dir_mode: None,
+            },
+            &state,
+        )
+        .await
+        .unwrap();
+
+        let files = sync_instance_content_files(&instance, &state)
+            .await
+            .unwrap();
+
+        assert!(
+            files
+                .iter()
+                .any(|file| file.relative_path == "mods/isolated-mod.jar"),
+            "refresh must resolve the PCL-isolated gameDir, got: {:?}",
+            files
+                .iter()
+                .map(|file| &file.relative_path)
+                .collect::<Vec<_>>(),
+        );
+    }
+
+    #[tokio::test]
+    async fn ordinary_instance_refresh_still_scans_its_profile_directory() {
+        let state = global_state().await;
+        let metadata = crate::api::instance::create(
+            format!("sync-normal {}", uuid::Uuid::new_v4()),
+            "1.20.1".to_string(),
+            crate::state::ModLoader::Vanilla,
+            None,
+            None,
+            crate::state::InstanceLink::Unmanaged,
+            None,
+            None,
+        )
+        .await
+        .unwrap();
+
+        let mods = state
+            .directories
+            .instances_dir()
+            .join(&metadata.instance.path)
+            .join("mods");
+        fs::create_dir_all(&mods).unwrap();
+        fs::write(mods.join("profile-mod.jar"), b"profile mod bytes").unwrap();
+
+        let files = sync_instance_content_files(&metadata.instance, &state)
+            .await
+            .unwrap();
+
+        assert!(
+            files
+                .iter()
+                .any(|file| file.relative_path == "mods/profile-mod.jar"),
+            "ordinary instances must keep scanning their profile directory, \
+             got: {:?}",
+            files
+                .iter()
+                .map(|file| &file.relative_path)
+                .collect::<Vec<_>>(),
+        );
     }
 
     /// Regression probe: an instance whose `game_dir_override` points to an
