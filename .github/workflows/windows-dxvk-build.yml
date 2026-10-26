@@ -1,0 +1,114 @@
+name: Windows DXVK build
+
+# Builds this fork's Windows installer and portable package as workflow
+# artifacts. The upstream updater is disabled so these builds are never
+# replaced by official releases that lack D3D9 compatibility.
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: windows-dxvk-build-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  resources:
+    name: Prepare build resources
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          submodules: recursive
+      - name: Setup pnpm
+        uses: pnpm/action-setup@008330803749db0355799c700092d9a85fd074e9 # v6.0.9
+      - name: Setup Node.js
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Prepare build resources
+        run: node scripts/axolotl/prepare-build-resources.mjs
+      - name: Upload build resources
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: desktop-resources
+          path: target/build-resources/
+          overwrite: true
+          retention-days: 3
+          if-no-files-found: error
+
+  windows:
+    name: Build Windows packages
+    needs: resources
+    runs-on: windows-2025
+    timeout-minutes: 240
+    env:
+      SQLX_OFFLINE: true
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          submodules: recursive
+      - name: Setup desktop build
+        uses: ./.github/actions/setup-desktop-build
+        with:
+          profile: release
+          save-cache: 'true'
+      - name: Write configuration without the upstream updater
+        shell: pwsh
+        run: |
+          $config = Join-Path $env:RUNNER_TEMP 'no-updater.conf.json'
+          Set-Content -LiteralPath $config -Value '{"build":{"features":[]},"app":{"security":{"capabilities":["core","plugins"]}}}'
+          "AXOLOTL_NO_UPDATER_CONFIG=$config" >> $env:GITHUB_ENV
+      - name: Compile application
+        working-directory: apps/app
+        shell: pwsh
+        env:
+          CARGO_PROFILE_RELEASE_LTO: 'false'
+          CURSEFORGE_API_KEY: ${{ secrets.CURSEFORGE_API_KEY }}
+        run: |
+          pnpm tauri build --ci --no-bundle --config tauri-release.conf.json --config "$env:AXOLOTL_NO_UPDATER_CONFIG" -- --locked --profile release
+          if ($LASTEXITCODE -ne 0) { throw 'Application compilation failed' }
+      - name: Bundle NSIS installer
+        working-directory: apps/app
+        shell: pwsh
+        run: |
+          pnpm tauri bundle --ci --bundles nsis --no-sign --config tauri-release.conf.json --config tauri-native.conf.json --config "$env:AXOLOTL_NO_UPDATER_CONFIG"
+          if ($LASTEXITCODE -ne 0) { throw 'NSIS bundling failed' }
+      - name: Stage installer and portable package
+        shell: pwsh
+        run: |
+          $version = (Get-Content -LiteralPath apps/app-frontend/package.json -Raw | ConvertFrom-Json).version
+          $output = Join-Path $PWD 'target/dxvk-packages'
+          New-Item -ItemType Directory -Force -Path $output | Out-Null
+
+          $installers = @(Get-ChildItem -LiteralPath target/release/bundle/nsis -Filter '*-setup.exe')
+          if ($installers.Count -ne 1) { throw "Expected one NSIS installer, found $($installers.Count)" }
+          Copy-Item -LiteralPath $installers[0].FullName -Destination (Join-Path $output "Axolotl_Launcher_${version}_x64_dxvk-setup.exe")
+
+          if (!(Test-Path -LiteralPath apps/app/resources/seed-map/axolotl-cubiomes.dll -PathType Leaf)) { throw 'Seed map library is missing' }
+          $staging = Join-Path $PWD 'target/dxvk-portable'
+          $portable = Join-Path $staging 'Axolotl'
+          if (Test-Path -LiteralPath $staging) { Remove-Item -LiteralPath $staging -Recurse -Force }
+          New-Item -ItemType Directory -Force -Path (Join-Path $portable '.Axolotl'), (Join-Path $portable 'resources') | Out-Null
+          Copy-Item -LiteralPath 'target/release/Axolotl Launcher.exe' -Destination $portable
+          Copy-Item -LiteralPath apps/app/resources/seed-map, apps/app/resources/blockbench-skin -Destination (Join-Path $portable 'resources') -Recurse
+          Add-Type -AssemblyName System.IO.Compression.FileSystem
+          [System.IO.Compression.ZipFile]::CreateFromDirectory($portable, (Join-Path $output "Axolotl_Launcher_${version}_x64_dxvk-portable.zip"), [System.IO.Compression.CompressionLevel]::Optimal, $true)
+
+          Get-ChildItem -LiteralPath $output | ForEach-Object { "$($_.Name) $((Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash)" }
+      - name: Upload Windows packages
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: axolotl-windows-dxvk-${{ github.sha }}
+          path: target/dxvk-packages/
+          retention-days: 30
+          if-no-files-found: error
