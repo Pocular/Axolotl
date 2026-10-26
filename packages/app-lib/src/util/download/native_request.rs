@@ -3,10 +3,16 @@
 use super::modrinth_redirect::repair_official_redirect as repair_official_cdn_redirect;
 use super::retired_sources;
 use crate::ErrorKind;
+use crate::util::download::constants::{
+    API_KEY_HEADER, AUTHORIZATION_HEADER, CURSEFORGE_API_HOST,
+    CURSEFORGE_EDGE_HOST, DOWNLOAD_META_HEADER, IDENTITY_ENCODING,
+    MAX_DOWNLOAD_REDIRECTS, MAX_REDIRECT_LOCATION_BYTES,
+    NATIVE_REQUEST_TIMED_OUT_WAITING_FOR_CDN_RESPONSE_CONNECTION_BUDGET,
+    RESOURCE_WAIT_TIMEOUT,
+};
 use crate::util::fetch::{
-    DIRECT_REQWEST_CLIENT, DOWNLOAD_META_HEADER, DownloadClients, DownloadMeta,
-    DownloadRoute, MAX_REDIRECT_LOCATION_BYTES, NO_REDIRECT_REQWEST_CLIENT,
-    ProxyPolicy, authority_uses_http1_fallback_for,
+    DIRECT_REQWEST_CLIENT, DownloadClients, DownloadMeta, DownloadRoute,
+    NO_REDIRECT_REQWEST_CLIENT, ProxyPolicy, authority_uses_http1_fallback_for,
     forget_effective_route_authority, is_allowed_download_redirect,
     is_h2_protocol_failure, is_official_modrinth_download_url,
     is_sensitive_header, record_authority_h2_failure_for,
@@ -32,15 +38,117 @@ pub(crate) fn byte_range_header_value(
 pub(crate) async fn send_cdn_request(
     builder: reqwest::RequestBuilder,
 ) -> crate::Result<reqwest::Response> {
+    send_cdn_request_inner(builder, None, None).await
+}
+
+pub(crate) async fn send_cdn_request_with_clients(
+    builder: reqwest::RequestBuilder,
+    clients: &DownloadClients,
+    proxy: ProxyPolicy,
+) -> crate::Result<reqwest::Response> {
+    send_cdn_request_inner(builder, Some((clients, proxy)), None).await
+}
+
+pub(crate) async fn send_cdn_request_with_budget(
+    builder: reqwest::RequestBuilder,
+    clients: &DownloadClients,
+    proxy: ProxyPolicy,
+    budget: super::native_budget::NativeBudgetPermit,
+) -> crate::Result<reqwest::Response> {
+    send_cdn_request_inner(builder, Some((clients, proxy)), Some(budget)).await
+}
+
+#[derive(Clone)]
+pub(crate) struct ResponseBudget {
+    _permit: std::sync::Arc<super::native_budget::NativeBudgetPermit>,
+}
+
+async fn send_cdn_request_inner(
+    builder: reqwest::RequestBuilder,
+    selection: Option<(&DownloadClients, ProxyPolicy)>,
+    mut admitted: Option<super::native_budget::NativeBudgetPermit>,
+) -> crate::Result<reqwest::Response> {
     let (client, request) = builder.build_split();
     let mut request = request?;
     *request.url_mut() =
         retired_sources::normalize_parsed(request.url().clone())?;
     let original = request.url().clone();
-    for hop in 0..=5 {
+    for hop in 0..=MAX_DOWNLOAD_REDIRECTS {
+        let physical_budget = if let Some(permit) = admitted.take() {
+            Some(std::sync::Arc::new(permit))
+        } else if let Some((_, proxy)) = selection {
+            let route = DownloadRoute {
+                url: request.url().to_string(),
+                source: crate::util::fetch::DownloadRouteSource::Official,
+                is_mirror: false,
+                allow_sensitive_headers: true,
+                supports_range: true,
+                proxy,
+            };
+            Some(std::sync::Arc::new(
+                tokio::time::timeout(
+                    RESOURCE_WAIT_TIMEOUT,
+                    super::native_budget::acquire(&route),
+                )
+                .await
+                .map_err(|_| {
+                    ErrorKind::NetworkError(
+                        NATIVE_REQUEST_TIMED_OUT_WAITING_FOR_CDN_RESPONSE_CONNECTION_BUDGET
+                            .into(),
+                    )
+                })??,
+            ))
+        } else {
+            None
+        };
         let next_request = request.try_clone();
-        let response = client.execute(request).await?;
-        if !response.status().is_redirection() || hop == 5 {
+        let pinned = selection.and_then(|(clients, proxy)| {
+            let fallback = clients.force_http1
+                || url_authority(request.url().as_str()).is_some_and(
+                    |authority| {
+                        authority_uses_http1_fallback_for(&authority, proxy)
+                    },
+                );
+            clients.endpoints.client_for(
+                request.url(),
+                proxy,
+                clients,
+                fallback,
+            )
+        });
+        let active_client =
+            pinned.as_ref().map_or(&client, |(client, _)| client);
+        let mut response = match active_client.execute(request).await {
+            Ok(response) => response,
+            Err(error) => {
+                if let Some((_, lease)) = &pinned
+                    && let Some((clients, _)) = selection
+                {
+                    clients.endpoints.record_failure(
+                        lease,
+                        super::endpoint_selection::invalid_certificate(&error),
+                    );
+                }
+                return Err(error.into());
+            }
+        };
+        if let Some(permit) = physical_budget {
+            response
+                .extensions_mut()
+                .insert(ResponseBudget { _permit: permit });
+        }
+        if let Some((_, lease)) = pinned
+            && let Some((clients, _)) = selection
+        {
+            response.extensions_mut().insert(
+                super::endpoint_selection::metrics::EndpointTransferGuard::new(
+                    &clients.endpoints,
+                    lease,
+                ),
+            );
+        }
+        if !response.status().is_redirection() || hop == MAX_DOWNLOAD_REDIRECTS
+        {
             return Ok(response);
         }
         let Some(location) =
@@ -82,6 +190,9 @@ pub(crate) async fn send_cdn_request(
             }
         }
         *cloned.url_mut() = next;
+        // A redirect must release its old-hop response and physical permit
+        // before admission for the next authority is awaited.
+        drop(response);
         request = cloned;
     }
     unreachable!()
@@ -109,9 +220,9 @@ pub(crate) async fn send_path_request_with_clients(
     };
     current = retired_sources::normalize_parsed(current)?;
     let mut reused_redirect_target = current != original;
-    for redirect_count in 0..=5 {
-        let fallback_to_http1 =
-            url_authority(current.as_str()).is_some_and(|authority| {
+    for redirect_count in 0..=MAX_DOWNLOAD_REDIRECTS {
+        let fallback_to_http1 = clients.force_http1
+            || url_authority(current.as_str()).is_some_and(|authority| {
                 authority_uses_http1_fallback_for(&authority, route.proxy)
             });
         let (system_client_for_hop, direct_client_for_hop): (
@@ -127,18 +238,26 @@ pub(crate) async fn send_path_request_with_clients(
         } else {
             system_client_for_hop
         };
+        let pinned = clients.endpoints.client_for(
+            &current,
+            route.proxy,
+            clients,
+            fallback_to_http1,
+        );
+        let client = pinned.as_ref().map_or(client, |(client, _)| client);
         let same_as_original = same_origin(&original, &current);
         let allow_sensitive = route.allow_sensitive_headers && same_as_original;
         let mut request = client.get(current.clone());
         if let Some((name, value)) = custom_header
             && (allow_sensitive || !is_sensitive_header(name))
-            && (!name.eq_ignore_ascii_case("x-api-key")
-                || original.host_str() == Some("api.curseforge.com"))
+            && (!name.eq_ignore_ascii_case(API_KEY_HEADER)
+                || original.host_str() == Some(CURSEFORGE_API_HOST))
         {
             request = request.header(name, value);
         }
         if allow_sensitive && let Some(credentials) = credentials {
-            request = request.header("Authorization", &credentials.session);
+            request =
+                request.header(AUTHORIZATION_HEADER, &credentials.session);
         }
         if !route.is_mirror
             && same_as_original
@@ -148,14 +267,30 @@ pub(crate) async fn send_path_request_with_clients(
             request = request
                 .header(DOWNLOAD_META_HEADER, download_meta.to_header_value());
         }
+        let redirect_probe = (range_start.is_some()
+            && current.host_str() == Some(CURSEFORGE_EDGE_HOST))
+        .then(|| request.try_clone())
+        .flatten();
         if let Some(range) = byte_range_header_value(range_start, range_end) {
             request = request
                 .header(header::RANGE, range)
-                .header(header::ACCEPT_ENCODING, "identity");
+                .header(header::ACCEPT_ENCODING, IDENTITY_ENCODING);
         }
-        let response = match request.send().await {
+        let mut response = match request.send().await {
             Ok(response) => response,
             Err(error) => {
+                if let Some((_, lease)) = &pinned {
+                    clients.endpoints.record_failure(
+                        lease,
+                        super::endpoint_selection::invalid_certificate(&error),
+                    );
+                }
+                tracing::warn!(
+                    url = %sanitize_url_for_log(current.as_str()),
+                    http1_fallback = fallback_to_http1,
+                    cause = ?std::error::Error::source(&error),
+                    "File download transport failed"
+                );
                 if let Some(host) = record_dns_connection_failure(route, &error)
                 {
                     crate::util::fetch::prewarm_download_dns_for(
@@ -165,7 +300,7 @@ pub(crate) async fn send_path_request_with_clients(
                     .await;
                 }
                 if !fallback_to_http1
-                    && redirect_count < 5
+                    && redirect_count < MAX_DOWNLOAD_REDIRECTS
                     && is_h2_protocol_failure(&error)
                     && let Some(authority) = url_authority(current.as_str())
                 {
@@ -180,6 +315,25 @@ pub(crate) async fn send_path_request_with_clients(
                 return Err(error.into());
             }
         };
+        if let Some((_, lease)) = pinned {
+            response.extensions_mut().insert(
+                super::endpoint_selection::metrics::EndpointTransferGuard::new(
+                    &clients.endpoints,
+                    lease,
+                ),
+            );
+        }
+        if response.status() == reqwest::StatusCode::NOT_FOUND
+            && let Some(probe) = redirect_probe
+            && let Ok(redirect) = probe.send().await
+            && redirect.status().is_redirection()
+        {
+            tracing::debug!(
+                host = current.host_str().unwrap_or_default(),
+                "Recovered ForgeCDN redirect without Range header"
+            );
+            response = redirect;
+        }
         if !response.status().is_redirection() {
             if reused_redirect_target
                 && (response.status().is_client_error()
@@ -215,7 +369,7 @@ pub(crate) async fn send_path_request_with_clients(
             );
             return Ok((response, current.into()));
         }
-        if redirect_count == 5 {
+        if redirect_count == MAX_DOWNLOAD_REDIRECTS {
             return Err(ErrorKind::OtherError(format!(
                 "Too many redirects while downloading {}",
                 route.url
@@ -331,6 +485,161 @@ mod tests {
             .build()
             .unwrap();
         (client, task)
+    }
+
+    #[tokio::test]
+    async fn forgecdn_range_404_recovers_redirect_and_caches_target() {
+        let listener =
+            tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let target = format!("http://{address}/files/pack%20name%2B.zip");
+        let expected_target = target.clone();
+        let server = tokio::spawn(async move {
+            for step in 0..4 {
+                let (mut stream, _) = listener.accept().await.unwrap();
+                let headers = read_headers(&mut stream).await;
+                let lower = headers.to_ascii_lowercase();
+                let response = match step {
+                    0 => {
+                        assert!(headers.starts_with("GET http://edge.forgecdn.net/files/pack%20name%2B.zip "));
+                        assert!(lower.contains("range: bytes=2-5\r\n"));
+                        assert!(lower.contains("authorization: secret\r\n"));
+                        "HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\nConnection: close\r\n\r\n".to_owned()
+                    }
+                    1 => {
+                        assert!(
+                            headers
+                                .starts_with("GET http://edge.forgecdn.net/")
+                        );
+                        assert!(!lower.contains("\r\nrange:"));
+                        format!(
+                            "HTTP/1.1 302 Found\r\nLocation: {target}\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
+                        )
+                    }
+                    _ => {
+                        assert!(headers.starts_with(&format!("GET {target} ")));
+                        assert!(lower.contains(if step == 2 {
+                            "range: bytes=2-5\r\n"
+                        } else {
+                            "range: bytes=6-9\r\n"
+                        }));
+                        assert!(
+                            lower.contains("accept-encoding: identity\r\n")
+                        );
+                        assert!(!lower.contains("authorization:"));
+                        let range = if step == 2 { "2-5" } else { "6-9" };
+                        format!(
+                            "HTTP/1.1 206 Partial Content\r\nContent-Range: bytes {range}/10\r\nContent-Length: 4\r\nConnection: close\r\n\r\ndata"
+                        )
+                    }
+                };
+                stream.write_all(response.as_bytes()).await.unwrap();
+            }
+        });
+        let client = reqwest::Client::builder()
+            .proxy(reqwest::Proxy::all(format!("http://{address}")).unwrap())
+            .redirect(reqwest::redirect::Policy::none())
+            .timeout(Duration::from_secs(3))
+            .build()
+            .unwrap();
+        let mut clients =
+            DownloadClients::build(&Default::default(), false, false).unwrap();
+        clients.system = client.clone();
+        clients.http1_system = client;
+        let route = DownloadRoute {
+            url: "http://edge.forgecdn.net/files/pack%20name%2B.zip".into(),
+            source: DownloadRouteSource::Official,
+            is_mirror: false,
+            allow_sensitive_headers: true,
+            supports_range: true,
+            proxy: ProxyPolicy::System,
+        };
+        let cached = AsyncMutex::new(None);
+        let header = ("Authorization".into(), "secret".into());
+        for start in [2, 6] {
+            let (response, final_url) = send_path_request_with_clients(
+                &route,
+                Some(&header),
+                None,
+                None,
+                Some(start),
+                Some(start + 3),
+                &clients,
+                Some(&cached),
+            )
+            .await
+            .unwrap();
+            assert_eq!(response.status(), reqwest::StatusCode::PARTIAL_CONTENT);
+            assert_eq!(final_url, expected_target);
+            assert_eq!(response.bytes().await.unwrap(), "data");
+        }
+        assert_eq!(
+            cached.lock().await.as_ref().unwrap().as_str(),
+            expected_target
+        );
+        tokio::time::timeout(Duration::from_secs(5), server)
+            .await
+            .unwrap()
+            .unwrap();
+    }
+
+    #[tokio::test]
+    async fn forgecdn_range_404_keeps_original_error_without_redirect() {
+        for probe_status in ["404 Not Found", "200 OK"] {
+            let listener =
+                tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+            let address = listener.local_addr().unwrap();
+            let server = tokio::spawn(async move {
+                for step in 0..2 {
+                    let (mut stream, _) = listener.accept().await.unwrap();
+                    let headers =
+                        read_headers(&mut stream).await.to_ascii_lowercase();
+                    assert_eq!(headers.contains("\r\nrange:"), step == 0);
+                    let status = if step == 0 {
+                        "404 Not Found"
+                    } else {
+                        probe_status
+                    };
+                    stream.write_all(format!("HTTP/1.1 {status}\r\nContent-Length: 0\r\nConnection: close\r\n\r\n").as_bytes()).await.unwrap();
+                }
+            });
+            let client = reqwest::Client::builder()
+                .proxy(
+                    reqwest::Proxy::all(format!("http://{address}")).unwrap(),
+                )
+                .redirect(reqwest::redirect::Policy::none())
+                .timeout(Duration::from_secs(3))
+                .build()
+                .unwrap();
+            let mut clients =
+                DownloadClients::build(&Default::default(), false, false)
+                    .unwrap();
+            clients.system = client.clone();
+            clients.http1_system = client;
+            let route = DownloadRoute {
+                url: "http://edge.forgecdn.net/files/missing.zip".into(),
+                source: DownloadRouteSource::Official,
+                is_mirror: false,
+                allow_sensitive_headers: false,
+                supports_range: true,
+                proxy: ProxyPolicy::System,
+            };
+            let (response, final_url) = send_path_request_with_clients(
+                &route,
+                None,
+                None,
+                None,
+                Some(0),
+                Some(3),
+                &clients,
+                None,
+            )
+            .await
+            .unwrap();
+            assert_eq!(response.status(), reqwest::StatusCode::NOT_FOUND);
+            assert_eq!(final_url, route.url);
+            server.await.unwrap();
+        }
     }
 
     #[tokio::test]

@@ -7,6 +7,10 @@ import ScreenshotsPage from './index.vue'
 
 const fixture = vi.hoisted(() => ({
     screenshots: [] as unknown[],
+    failScreenshots: false,
+    failGroups: false,
+    screenshotCalls: 0,
+    groupCalls: 0,
     deleted: vi.fn(),
     moved: vi.fn(),
     preview: vi.fn(),
@@ -41,12 +45,20 @@ vi.mock('@/pages/instance/query-options', () => ({
     }),
     syncedScreenshotsQueryOptions: () => ({
         queryKey: ['screenshots'],
-        queryFn: async () => ({
-            screenshots: fixture.screenshots,
-            skipped_instances: fixture.skipped,
-        }),
+        queryFn: async () => {
+            fixture.screenshotCalls++
+            if (fixture.failScreenshots) throw new Error('Screenshot scan failed')
+            return { screenshots: fixture.screenshots, skipped_instances: fixture.skipped }
+        },
     }),
-    screenshotGroupsQueryOptions: () => ({ queryKey: ['groups'], queryFn: async () => [] }),
+    screenshotGroupsQueryOptions: () => ({
+        queryKey: ['groups'],
+        queryFn: async () => {
+            fixture.groupCalls++
+            if (fixture.failGroups) throw new Error('Group scan failed')
+            return []
+        },
+    }),
     screenshotKeys: {
         groups: () => ['groups'],
         global: () => ['screenshots'],
@@ -109,7 +121,25 @@ vi.mock('@modrinth/ui', async () => {
         IconButton,
         useScrollViewport,
         Avatar: container,
-        EmptyState: container,
+        Admonition: defineComponent({
+            props: ['header'],
+            setup:
+                (props, { slots }) =>
+                () =>
+                    h('aside', { role: 'alert' }, [props.header, slots.default?.()]),
+        }),
+        EmptyState: defineComponent({
+            props: ['heading', 'description'],
+            setup:
+                (props, { slots }) =>
+                () =>
+                    h('section', { 'data-empty-state': '' }, [
+                        props.heading,
+                        props.description,
+                        slots.default?.(),
+                        slots.actions?.(),
+                    ]),
+        }),
         ReadyTransition: container,
         TagItem: container,
         Button: defineComponent({
@@ -156,6 +186,7 @@ vi.mock('@modrinth/ui', async () => {
             computed(() => query.isPending.value),
         defineMessages: (messages: unknown) => messages,
         commonMessages: {
+            retryButton: { defaultMessage: 'Retry' },
             clearButton: { defaultMessage: 'Clear' },
             deleteLabel: { defaultMessage: 'Delete' },
             actionsLabel: { defaultMessage: 'Actions' },
@@ -183,7 +214,56 @@ afterEach(() => {
         .forEach((fn) => fn())
     localStorage.clear()
     fixture.skipped = []
+    fixture.failScreenshots = false
+    fixture.failGroups = false
+    fixture.screenshotCalls = 0
+    fixture.groupCalls = 0
     fixture.notify.mockReset()
+})
+
+it('mounts only visible screenshots plus two below the viewport in a large collection', async () => {
+    const createdAt = new Date().toISOString()
+    fixture.screenshots = Array.from({ length: 1000 }, (_, index) => ({
+        id: `large-${index}`,
+        instance_id: 'instance',
+        instance_name: 'Test instance',
+        file_name: `large-${String(index).padStart(4, '0')}.png`,
+        created_at: createdAt,
+        modified_at: 1,
+        group_id: null,
+        path: '',
+        url: '',
+    }))
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    cleanup.push(() => client.clear())
+    const host = document.createElement('div')
+    host.style.cssText = 'width:600px;height:600px;overflow:auto'
+    document.body.append(host)
+    cleanup.push(() => host.remove())
+    const wrapper = await mountThemed(ScreenshotsPage, {}, 'dark', {
+        attachTo: host,
+        global: {
+            plugins: [[VueQueryPlugin, { queryClient: client }]],
+            directives: { tooltip: {} },
+        },
+    })
+    cleanup.push(() => wrapper.unmount())
+    const cards = () => wrapper.findAll('[data-screenshot-card]')
+    const belowViewport = () =>
+        cards().filter(
+            (card) =>
+                card.element.getBoundingClientRect().top >= host.getBoundingClientRect().bottom,
+        )
+    await waitFor(() => cards().length > 2 && belowViewport().length === 2)
+    expect(cards().length).toBeLessThan(30)
+    const firstId = cards()[0].attributes('data-screenshot-id')
+    host.scrollTop = 30000
+    host.dispatchEvent(new Event('scroll'))
+    await waitFor(
+        () => cards().length > 2 && cards()[0].attributes('data-screenshot-id') !== firstId,
+    )
+    expect(cards().length).toBeLessThan(30)
+    expect(belowViewport()).toHaveLength(2)
 })
 
 it('renders healthy screenshots and reports one warning after a partial scan completes', async () => {
@@ -332,4 +412,65 @@ it('uses page range and group selection and limits deletion to the current filte
     expect(wrapper.get('[data-selection-bar]').text()).toContain('1 selected')
     expect(fixture.preview).toHaveBeenCalledTimes(1)
     expect(fixture.moved).not.toHaveBeenCalled()
+})
+
+async function renderFailureCase() {
+    fixture.screenshots = [
+        {
+            id: 'kept',
+            instance_id: 'one',
+            instance_name: 'One',
+            file_name: 'kept.png',
+            created_at: new Date().toISOString(),
+            modified_at: 1,
+            group_id: null,
+            path: '',
+            url: '',
+        },
+    ]
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    cleanup.push(() => client.clear())
+    const wrapper = await mountThemed(ScreenshotsPage, {}, 'dark', {
+        global: {
+            plugins: [[VueQueryPlugin, { queryClient: client }]],
+            directives: { tooltip: {} },
+        },
+    })
+    cleanup.push(() => wrapper.unmount())
+    return { client, wrapper }
+}
+
+it('retries the failed group query instead of scanning healthy screenshots again', async () => {
+    localStorage.setItem('screenshots-group-v2-global', 'custom')
+    fixture.failGroups = true
+    const { wrapper } = await renderFailureCase()
+    await waitFor(() => wrapper.text().includes('Group scan failed'))
+    expect(wrapper.findAll('[data-screenshot-card]')).toHaveLength(0)
+    const previousScans = fixture.screenshotCalls
+    fixture.failGroups = false
+    await wrapper
+        .findAll('button')
+        .find((button) => button.text() === 'Retry')!
+        .trigger('click')
+    await waitFor(() => wrapper.findAll('[data-screenshot-card]').length === 1)
+    expect(fixture.groupCalls).toBe(2)
+    expect(fixture.screenshotCalls).toBe(previousScans)
+})
+
+it('keeps cached screenshots and selection after a background scan failure', async () => {
+    const { client, wrapper } = await renderFailureCase()
+    await waitFor(() => wrapper.findAll('[data-screenshot-card]').length === 1)
+    await wrapper.get('[data-screenshot-id="kept"]').trigger('click', { ctrlKey: true })
+    fixture.failScreenshots = true
+    await client.refetchQueries({ queryKey: ['screenshots'] })
+    await waitFor(() => wrapper.find('[role="alert"]').exists())
+    expect(wrapper.findAll('[data-screenshot-card]')).toHaveLength(1)
+    expect(wrapper.get('[data-selection-bar]').text()).toContain('1 selected')
+    fixture.failScreenshots = false
+    await wrapper
+        .findAll('button')
+        .find((button) => button.text() === 'Retry')!
+        .trigger('click')
+    await waitFor(() => !wrapper.find('[role="alert"]').exists())
+    expect(wrapper.findAll('[data-screenshot-card]')).toHaveLength(1)
 })

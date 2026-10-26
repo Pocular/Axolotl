@@ -19,6 +19,7 @@ import {
     XIcon,
 } from '@modrinth/assets'
 import {
+    Admonition,
     Avatar,
     Button,
     type ButtonMenuOption,
@@ -79,6 +80,7 @@ import {
 import ScreenshotDragGather from './drag-gather.vue'
 import ScreenshotDragPreview from './drag-preview.vue'
 import ScreenshotGroupSection from './group.vue'
+import { screenshotRenderWindows } from './screenshot-render-window'
 import {
     createScreenshotSelection,
     isSelectionModifier,
@@ -134,7 +136,6 @@ const SCREENSHOT_GRID_GAP = 12
 const SCREENSHOT_GROUP_SPACING = 12
 const SCREENSHOT_GROUP_HEADER_HEIGHT = 40
 const SCREENSHOT_GROUP_CONTENT_SPACING = 10
-const SCREENSHOT_GROUP_OVERSCAN = 2000
 const SCREENSHOT_GRID_MIN_HEIGHT = 45
 const FALLBACK_SCREENSHOT_CARD_WIDTH = 320
 
@@ -391,6 +392,25 @@ const screenshotsError = computed(() => {
     }
     return new Error(String(error))
 })
+const hasScreenshotViewData = computed(
+    () =>
+        screenshotsQuery.data.value !== undefined &&
+        (groupBy.value !== 'custom' || screenshotGroupsQuery.data.value !== undefined),
+)
+const retryingScreenshots = computed(
+    () =>
+        screenshotsQuery.isFetching.value ||
+        (groupBy.value === 'custom' && screenshotGroupsQuery.isFetching.value),
+)
+async function retryScreenshots() {
+    const requests = []
+    if (screenshotsQuery.error.value) requests.push(screenshotsQuery.refetch())
+    if (groupBy.value === 'custom' && screenshotGroupsQuery.error.value) {
+        requests.push(screenshotGroupsQuery.refetch())
+    }
+    await Promise.all(requests)
+}
+
 const selectionActive = computed(() => selectedKeys.value.size > 0)
 const selectedScreenshots = computed(() =>
     screenshots.value.filter((screenshot) => selectedKeys.value.has(getSelectionKey(screenshot))),
@@ -606,45 +626,24 @@ const screenshotGroupLayouts = computed<ScreenshotGroupLayout[]>(() => {
 
 const virtualizedScreenshotGroups = computed<VirtualizedScreenshotGroupLayout[]>(() => {
     const hasViewport = Boolean(screenshotListContainer.value && screenshotScrollContainer.value)
-    const viewportStart = hasViewport
-        ? Math.max(0, screenshotListScrollTop.value - SCREENSHOT_GROUP_OVERSCAN)
-        : 0
+    const viewportStart = hasViewport ? Math.max(0, screenshotListScrollTop.value) : 0
     const viewportEnd = hasViewport
-        ? screenshotListScrollTop.value + screenshotViewportHeight.value + SCREENSHOT_GROUP_OVERSCAN
-        : SCREENSHOT_GROUP_OVERSCAN
-
-    return screenshotGroupLayouts.value.map((layout) => {
-        const isInRenderRange =
-            layout.top + layout.height >= viewportStart && layout.top <= viewportEnd
-        if (!layout.isOpen || layout.group.screenshots.length === 0) {
-            return { ...layout, renderedScreenshots: [], virtualGridTop: 0 }
-        }
-        if (!isInRenderRange) {
-            return { ...layout, renderedScreenshots: [], virtualGridTop: 0 }
-        }
-
-        const rowCount = Math.ceil(layout.group.screenshots.length / screenshotColumnCount.value)
-        const firstRow = Math.min(
-            rowCount,
-            Math.max(0, Math.floor((viewportStart - layout.gridTop) / screenshotRowHeight.value)),
-        )
-        const lastRow = Math.min(
-            rowCount,
-            Math.max(
-                firstRow,
-                Math.ceil(
-                    (viewportEnd - layout.gridTop + SCREENSHOT_GRID_GAP) /
-                        screenshotRowHeight.value,
-                ),
-            ),
-        )
-        const firstScreenshot = firstRow * screenshotColumnCount.value
-        const lastScreenshot = lastRow * screenshotColumnCount.value
-
+        ? screenshotListScrollTop.value + screenshotViewportHeight.value
+        : 0
+    const layouts = screenshotGroupLayouts.value
+    const windows = screenshotRenderWindows(
+        layouts.map((layout) => ({ ...layout, count: layout.group.screenshots.length })),
+        viewportStart,
+        viewportEnd,
+        screenshotColumnCount.value,
+        screenshotRowHeight.value,
+    )
+    return layouts.map((layout, index) => {
+        const window = windows[index]
         return {
             ...layout,
-            renderedScreenshots: layout.group.screenshots.slice(firstScreenshot, lastScreenshot),
-            virtualGridTop: firstRow * screenshotRowHeight.value,
+            renderedScreenshots: layout.group.screenshots.slice(window.start, window.end),
+            virtualGridTop: window.top,
         }
     })
 })
@@ -1609,20 +1608,31 @@ onBeforeUnmount(() => {
                 :group-options="groupOptions"
                 @new-group="createCustomGroup"
             />
-            <p class="m-0 text-xs text-[var(--color-text-tertiary)]">
-                {{ formatMessage(messages.selectionHint) }}
-            </p>
         </template>
 
+        <Admonition
+            v-if="screenshotsError && hasScreenshotViewData"
+            type="warning"
+            :header="formatMessage(messages.errorHeading)"
+        >
+            <p class="m-0">{{ screenshotsError.message }}</p>
+            <Button type="outlined" :loading="retryingScreenshots" @click="retryScreenshots">
+                {{ formatMessage(commonMessages.retryButton) }}
+            </Button>
+        </Admonition>
         <ReadyTransition :pending="screenshotsReadyPending">
             <EmptyState
-                v-if="screenshotsError"
+                v-if="screenshotsError && !hasScreenshotViewData"
                 type="error"
                 :heading="formatMessage(messages.errorHeading)"
                 :description="screenshotsError.message"
             >
                 <template #actions>
-                    <Button type="outlined" @click="screenshotsQuery.refetch()">
+                    <Button
+                        type="outlined"
+                        :loading="retryingScreenshots"
+                        @click="retryScreenshots"
+                    >
                         {{ formatMessage(commonMessages.retryButton) }}
                     </Button>
                 </template>
